@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run on macOS: /bin/bash tests/macos-installer.test.sh
 # Each helper invocation receives an isolated HOME; no real browser is touched.
-set -euo pipefail
+set -Eeuo pipefail
 
 [[ "$(/usr/bin/uname -s)" == Darwin ]] || { printf 'These integration tests require macOS and its system plutil.\n' >&2; exit 1; }
 REPOSITORY=$(cd -P -- "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -15,7 +15,26 @@ cleanup() {
     *) printf 'Refusing to clean an unexpected temporary path: %s\n' "$TEST_ROOT" >&2 ;;
   esac
 }
-trap cleanup EXIT
+finish() {
+  local result=$?
+  local captured
+  trap - EXIT
+  # The fixture contains only synthetic IDs and paths. Show captured helper
+  # output before deleting it so a platform-specific failure is actionable.
+  set +e
+  if [[ "$result" -ne 0 ]]; then
+    printf '\nInstaller integration test exited %s. Captured fixture output:\n' "$result" >&2
+    for captured in "$TEST_ROOT"/*.txt; do
+      [[ -f "$captured" && ! -L "$captured" ]] || continue
+      printf '\n--- %s ---\n' "${captured##*/}" >&2
+      /bin/cat -- "$captured" >&2
+    done
+  fi
+  cleanup
+  exit "$result"
+}
+trap finish EXIT
+trap 'printf "Unexpected test failure at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 trap 'exit 130' INT
 trap 'exit 143' TERM
 

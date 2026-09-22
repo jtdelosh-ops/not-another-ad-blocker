@@ -1,6 +1,6 @@
 #!/bin/bash
 # Register the companion shipped beside this helper for the current user only.
-set -euo pipefail
+set -Eeuo pipefail
 
 HOST_NAME='com.naab.companion'
 BROWSER='chrome'
@@ -28,6 +28,7 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+trap 'printf "NAAB: Installation stopped at line %s (exit %s).\n" "$LINENO" "$?" >&2' ERR
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
