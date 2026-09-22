@@ -1,0 +1,17 @@
+[package]
+name = "naab-companion"
+version = "0.2.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["raw_value"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+sha2 = "0.10"
+time = { version = "0.3", features = ["formatting"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

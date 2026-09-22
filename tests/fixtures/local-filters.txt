@@ -1,0 +1,8 @@
+! NAAB deterministic local demonstration list; .test names never resolve publicly.
+[Adblock Plus 2.0]
+||ads.example.test^
+||tracker.example.test^$third-party
+@@||ads.example.test/allowed.js
+example.test##.advertisement
+##.naab-demo-ad
+||unsupported.example.test^$redirect=noopjs

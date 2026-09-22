@@ -1,0 +1,6 @@
+# Keep source diffs consistent across Windows and Unix checkouts.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+# Markdown uses trailing spaces for intentional hard line breaks.
+*.md whitespace=-blank-at-eol

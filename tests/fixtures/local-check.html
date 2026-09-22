@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NAAB · Local blocking check</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101a17; color: #eef4ea; }
+    * { box-sizing: border-box; } body { margin: 0; } main { max-width: 1050px; margin: auto; padding: 48px 24px; }
+    .eyebrow { color: #b9f092; font-size: 12px; letter-spacing: .16em; font-weight: 750; }
+    h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.12; margin: 16px 0; letter-spacing: -.03em; }
+    p { line-height: 1.55; } .muted { color: #b4c6bb; } .intro { max-width: 770px; }
+    .steps, .result, article { border: 1px solid #375144; border-radius: 16px; background: #19271f; }
+    .steps { padding: 18px 24px; margin: 28px 0 22px; } .steps p { margin: 6px 0; }
+    .result { padding: 20px 24px; margin-bottom: 24px; } .result h2 { margin: 0 0 5px; font-size: 23px; } .result p { margin: 0; }
+    .result[data-state="blocked"] { border-color: #b9f092; } .result[data-state="inconclusive"] { border-color: #ffc692; }
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; } article { padding: 22px; min-width: 0; }
+    article h2 { margin: 0; font-size: 20px; } .label { font-size: 13px; color: #b9f092; min-height: 20px; }
+    .picture { aspect-ratio: 640 / 210; border: 1px dashed #537260; border-radius: 14px; display: grid; place-items: center; overflow: hidden; margin-top: 22px; }
+    .picture img { display: block; width: 100%; height: auto; } .picture span { color: #b4c6bb; padding: 12px; text-align: center; }
+    button { border: 0; border-radius: 10px; background: #b9f092; color: #16220f; font: inherit; font-weight: 700; padding: 13px 20px; cursor: pointer; margin-top: 24px; }
+    button:disabled { opacity: .6; cursor: wait; } .small { font-size: 13px; } footer { border-top: 1px solid #375144; margin-top: 32px; padding-top: 12px; }
+    @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } main { padding: 28px 16px; } }
+  </style>
+</head>
+<body><main>
+  <p class="eyebrow">NAAB / LOCAL CHECK</p>
+  <h1>See blocking happen.</h1>
+  <p class="muted intro">Two identical, harmless banners come from your own computer. One uses a normal address; the other uses an address matched by an EasyList image rule. No real advertisements or trackers are involved.</p>
+  <div class="steps">
+    <p><strong>Use the Chrome profile where NAAB is installed.</strong> Leave Privacy Badger and other blockers off for both runs. EasyList must be downloaded in NAAB.</p>
+    <p><strong>1. Switch Global protection off</strong> in NAAB's Lists &amp; diagnostics, then reload this page. Both banners should appear.</p>
+    <p><strong>2. Switch Global protection on,</strong> then reload this page. The normal banner should remain and the ad-pattern banner should disappear.</p>
+  </div>
+  <section id="overall" class="result" data-state="running" aria-live="polite">
+    <h2 id="result-title">Checking the two images…</h2><p id="result-detail" class="muted">Verifying the local server and both image requests.</p>
+  </section>
+  <div class="cards">
+    <article><h2>Normal image</h2><p id="reference-result" class="label" data-state="loading">Checking…</p><div id="reference-picture" class="picture"></div><p class="small muted">This should load in both runs.</p></article>
+    <article><h2>Ad-pattern image</h2><p id="advert-result" class="label" data-state="loading">Checking…</p><div id="advert-picture" class="picture"></div><p class="small muted">This should load with NAAB off, then be blocked with NAAB on.</p></article>
+  </div>
+  <button id="rerun" type="button">Run check again</button>
+  <footer class="small muted"><p>This checks one network-blocking rule. It does not measure total ad coverage or cosmetic hiding, and cannot identify which extension blocked a request. If the on/off result stays the same, verify the selected Chrome profile, EasyList, other blockers, and NAAB's site exception for 127.0.0.1.</p></footer>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  function loadImage(path, target, nonce) {
+    return new Promise(resolve => {
+      const image = new Image(); image.alt = 'Harmless local banner: this banner loaded.';
+      let complete = false;
+      const finish = status => {
+        if (complete) return; complete = true; clearTimeout(timer);
+        image.onload = image.onerror = null;
+        if (status === 'loaded') byId(target).replaceChildren(image);
+        else { const message = document.createElement('span'); message.textContent = status === 'timeout' ? 'Image request timed out' : 'Image did not load'; byId(target).replaceChildren(message); }
+        resolve(status);
+      };
+      const timer = setTimeout(() => finish('timeout'), 5000);
+      image.onload = () => finish('loaded'); image.onerror = () => finish('failed');
+      image.src = path + '?run=' + nonce;
+    });
+  }
+  async function readImage(path, nonce) {
+    const response = await fetch(path + '?verify=' + nonce, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    if (!response.ok || !response.headers.get('content-type')?.startsWith('image/svg+xml')) throw new Error('Image endpoint unavailable');
+    return response.text();
+  }
+  function label(id, state, text) { byId(id).dataset.state = state; byId(id).textContent = text; }
+  async function run() {
+    byId('rerun').disabled = true; byId('overall').dataset.state = 'running';
+    byId('result-title').textContent = 'Checking the two images…'; byId('result-detail').textContent = 'Verifying the local server and both image requests.';
+    label('reference-result', 'loading', 'Checking…'); label('advert-result', 'loading', 'Checking…');
+    byId('reference-picture').replaceChildren(); byId('advert-picture').replaceChildren();
+    try {
+      const nonce = Date.now() + '-' + Math.random().toString(36).slice(2);
+      const [normal, advert, normalSource, advertSource] = await Promise.allSettled([
+        loadImage('/reference.svg', 'reference-picture', nonce), loadImage('/adimage.svg', 'advert-picture', nonce),
+        readImage('/reference.svg', nonce), readImage('/adimage.svg', nonce)
+      ]);
+      const normalLoaded = normal.status === 'fulfilled' && normal.value === 'loaded';
+      const advertLoaded = advert.status === 'fulfilled' && advert.value === 'loaded';
+      const sameSource = normalSource.status === 'fulfilled' && advertSource.status === 'fulfilled' && normalSource.value === advertSource.value && normalSource.value.includes('<svg');
+      const blocked = normalLoaded && !advertLoaded && advert.status === 'fulfilled' && advert.value === 'failed' && sameSource;
+      label('reference-result', normalLoaded ? 'loaded' : 'error', normalLoaded ? 'Loaded — normal content is available' : 'Failed — comparison is inconclusive');
+      label('advert-result', advertLoaded ? 'loaded' : blocked ? 'blocked' : 'error', advertLoaded ? 'Loaded — this image was allowed' : blocked ? 'Blocked — its image request did not load' : 'Failed — could not verify blocking');
+      const state = normalLoaded && advertLoaded && sameSource ? 'unblocked' : blocked ? 'blocked' : 'inconclusive';
+      byId('overall').dataset.state = state;
+      byId('result-title').textContent = state === 'blocked' ? 'Ad-pattern image blocked' : state === 'unblocked' ? 'Both images loaded' : 'The check is inconclusive';
+      byId('result-detail').textContent = state === 'blocked' ? 'The normal image loaded and the server supplies both images. This is the expected result with NAAB on and other blockers off.' : state === 'unblocked' ? 'This is the expected baseline with NAAB off. Turn NAAB on and reload to compare.' : 'A control request failed or timed out. This result does not confirm ad blocking. Keep the local server running, then try again.';
+    } finally { byId('rerun').disabled = false; }
+  }
+  byId('rerun').addEventListener('click', () => void run());
+  void run();
+</script>
+</body></html>

@@ -1,0 +1,8 @@
+! NAAB local demo — reserved test domains; no real subscription
+||ads.example.test^
+||tracker.example.test^$third-party
+@@||ads.example.test/allowed.js
+example.test##.advertisement
+##.generic-ad-class
+! Deliberately unsupported: explains the current parser boundary
+example.test##div:has(.sponsor)

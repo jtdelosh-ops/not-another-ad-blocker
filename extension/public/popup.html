@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not Another Ad Blocker</title><link rel="stylesheet" href="style.css"><script src="popup.js" defer></script></head>
+<body class="popup"><main>
+  <p class="eyebrow">NAAB / LOCAL PREVIEW</p>
+  <h1>Not Another<br>Ad Blocker</h1>
+  <section class="card"><h2 id="site">Loading current site…</h2><p id="protection" class="status">Checking protection…</p><p id="counts" class="muted"></p>
+    <label class="switch"><span>Global protection</span><input type="checkbox" id="global" disabled></label>
+    <label class="switch"><span id="site-label">Protection for this site</span><input type="checkbox" id="site-toggle" disabled></label>
+    <p id="site-note" class="small muted"></p>
+  </section>
+  <p id="companion" class="small muted">Checking local companion…</p>
+  <p id="error" role="alert" class="error"></p>
+  <button id="options" class="primary">Lists &amp; diagnostics</button>
+  <p class="small muted">Local lists only. No activity counter or element picker yet.</p>
+</main></body></html>
