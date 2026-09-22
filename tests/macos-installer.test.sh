@@ -2,6 +2,10 @@
 # Run on macOS: /bin/bash tests/macos-installer.test.sh
 # Each helper invocation receives an isolated HOME; no real browser is touched.
 set -Eeuo pipefail
+# Keep diagnostics independent of per-invocation capture redirections. Bash can
+# run an error/exit trap while a function's stderr still points at its log file.
+# Sending that log back to the same descriptor can make cat copy into itself.
+exec 3>&2
 
 [[ "$(/usr/bin/uname -s)" == Darwin ]] || { printf 'These integration tests require macOS and its system plutil.\n' >&2; exit 1; }
 REPOSITORY=$(cd -P -- "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -12,7 +16,7 @@ cleanup() {
   case "$TEST_ROOT" in
     "$TEMP_BASE"/naab-installer-tests.??????)
       [[ -d "$TEST_ROOT" && ! -L "$TEST_ROOT" ]] && /bin/rm -rf -- "$TEST_ROOT" ;;
-    *) printf 'Refusing to clean an unexpected temporary path: %s\n' "$TEST_ROOT" >&2 ;;
+    *) printf 'Refusing to clean an unexpected temporary path: %s\n' "$TEST_ROOT" >&3 ;;
   esac
 }
 finish() {
@@ -23,18 +27,18 @@ finish() {
   # output before deleting it so a platform-specific failure is actionable.
   set +e
   if [[ "$result" -ne 0 ]]; then
-    printf '\nInstaller integration test exited %s. Captured fixture output:\n' "$result" >&2
+    printf '\nInstaller integration test exited %s. Captured fixture output:\n' "$result" >&3
     for captured in "$TEST_ROOT"/*.txt; do
       [[ -f "$captured" && ! -L "$captured" ]] || continue
-      printf '\n--- %s ---\n' "${captured##*/}" >&2
-      /bin/cat -- "$captured" >&2
+      printf '\n--- %s ---\n' "${captured##*/}" >&3
+      /bin/cat -- "$captured" >&3
     done
   fi
   cleanup
   exit "$result"
 }
 trap finish EXIT
-trap 'printf "Unexpected test failure at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
+trap 'printf "Unexpected test failure at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&3' ERR
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
