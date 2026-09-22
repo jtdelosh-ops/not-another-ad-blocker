@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.19.0
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck extension
+        working-directory: extension
+        run: pnpm typecheck
+
+      - name: Test extension
+        working-directory: extension
+        run: pnpm test
+
+      - name: Build extension and native client
+        working-directory: extension
+        run: pnpm build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-21
+        with:
+          toolchain: '1.98.1'
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path companion/Cargo.toml --all --check
+
+      - name: Test companion
+        run: cargo test --locked --manifest-path companion/Cargo.toml
+
+      - name: Build companion for native integration
+        run: cargo build --locked --manifest-path companion/Cargo.toml
+
+      - name: Test installer and native integration
+        run: node --test tests/installer.test.mjs tests/native-integration.test.mjs

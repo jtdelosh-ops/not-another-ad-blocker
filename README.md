@@ -116,6 +116,8 @@ node --test tests/installer.test.mjs tests/native-integration.test.mjs
 
 Native integration tests use the extension's actual client with framed stdin/stdout transport to the Rust executable. See [verification notes](docs/verification.md) for completed checks and remaining platform limitations.
 
+GitHub Actions runs the deterministic extension, Rust, installer, and native integration checks on Windows and macOS for pull requests and pushes to `main`. CI uses Node.js 22, pnpm 11.19.0, and Rust 1.98.1 with locked dependencies; the required job names are `Test (windows-latest)` and `Test (macos-latest)`. Live list downloads and browser smoke tests remain separate checks, so CI does not verify browser registration or advertising availability.
+
 Next work covers activity diagnostics and honest block counts; the visual element picker with preview/undo; more compatibility and performance tests; macOS installation verification; and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
 
 EasyList and EasyPrivacy are maintained by **The EasyList authors** and are downloaded on request, not bundled into this repository. Their copyright and dual-license details are on the official [EasyList about page](https://easylist.to/pages/about.html). No distribution license has been selected for NAAB itself.
