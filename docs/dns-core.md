@@ -13,9 +13,15 @@ cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --
 cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json
 ```
 
-The first command validates configuration and prints compilation diagnostics without opening a socket. The second starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
+To save the JSON report for later comparison:
 
-Windows `nslookup` on some systems reports a custom port but does not send the query to it. Use NAAB's dependency-free PowerShell probe instead:
+```powershell
+cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check | Set-Content -Encoding UTF8 dns-coverage.json
+```
+
+The first command validates configuration and prints a JSON DNS coverage report without opening a socket. The report distinguishes candidate block lines from deduplicated candidate rules and effective rules after safety suppression. The runtime command starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
+
+The automated Windows `nslookup` invocation did not reach the development resolver in our test environment. Use NAAB's dependency-free PowerShell probe instead:
 
 ```powershell
 PowerShell -ExecutionPolicy Bypass -File scripts\test-dns.ps1 -Name ads.example.test
@@ -84,7 +90,7 @@ Run the offline tests with:
 cargo test --locked --manifest-path companion/Cargo.toml
 ```
 
-The DNS tests use loopback upstream fixtures, exercise real UDP/TCP sockets, and require no public DNS access or system configuration changes. The final local suite passed 87 Rust tests, including 31 new DNS tests, plus 8 existing installer/native-client tests. Native-host process tests guard the existing extension protocol. An independent raw UDP probe also received the expected NXDOMAIN from the actual executable.
+The DNS tests use loopback upstream fixtures, exercise real UDP/TCP sockets, and require no public DNS access or system configuration changes. The final local suite passed 88 Rust tests, including 32 DNS tests, plus 8 existing installer/native-client tests. Native-host process tests guard the existing extension protocol. An independent raw UDP probe also received the expected NXDOMAIN from the actual executable.
 
 Verification limits: Windows `nslookup` failed to connect from the automation environment over either UDP or TCP, while the resolver recorded no requests from that client; the direct probe and socket tests succeeded. That client interoperability check remains unresolved and should be repeated in a normal terminal before treating this as ready for system integration. macOS execution of the DNS milestone is also unverified. These are development-core results, not a Phase 2 exit approval.
 

@@ -64,6 +64,22 @@ pub struct CompileReport {
     pub diagnostics: Vec<CompileDiagnostic>,
     pub diagnostics_total: usize,
     pub diagnostics_omitted: usize,
+    pub coverage: CoverageSummary,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageSummary {
+    pub input_lines: usize,
+    pub candidate_block_lines: usize,
+    pub candidate_block_rules: usize,
+    pub effective_block_rules: usize,
+    pub list_allow_rules: usize,
+    pub conservative_allow_lines: usize,
+    pub ignored_lines: usize,
+    pub unsupported_lines: usize,
+    pub list_blocks_suppressed: bool,
+    pub suppression_reasons_total: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -241,6 +257,43 @@ impl DnsPolicy {
         };
         policy.report.diagnostics_omitted =
             policy.report.diagnostics_total - policy.report.diagnostics.len();
+        policy.report.coverage = CoverageSummary {
+            input_lines: policy
+                .report
+                .sources
+                .iter()
+                .map(|source| source.lines)
+                .sum(),
+            candidate_block_lines: policy
+                .report
+                .sources
+                .iter()
+                .map(|source| source.blocks)
+                .sum(),
+            candidate_block_rules: policy.report.list_block_rules,
+            effective_block_rules: policy.report.effective_list_block_rules,
+            list_allow_rules: policy.report.list_allow_rules,
+            conservative_allow_lines: policy
+                .report
+                .sources
+                .iter()
+                .map(|source| source.conservative_allows)
+                .sum(),
+            ignored_lines: policy
+                .report
+                .sources
+                .iter()
+                .map(|source| source.ignored)
+                .sum(),
+            unsupported_lines: policy
+                .report
+                .sources
+                .iter()
+                .map(|source| source.unsupported)
+                .sum(),
+            list_blocks_suppressed: policy.report.list_blocks_suppressed,
+            suppression_reasons_total: policy.report.suppression_reasons_total,
+        };
         Ok(policy)
     }
 
@@ -787,5 +840,30 @@ mod tests {
             .report()
             .list_blocks_suppressed
         );
+    }
+
+    #[test]
+    fn coverage_summary_distinguishes_candidates_from_effective_rules() {
+        let policy =
+            compile("! header\n||ads.example^\n||ads.example^\n/path/$script\n@@/unsupported/");
+        let coverage = &policy.report().coverage;
+        assert_eq!(coverage.input_lines, 5);
+        assert_eq!(coverage.candidate_block_lines, 2);
+        assert_eq!(coverage.candidate_block_rules, 1);
+        assert_eq!(coverage.list_allow_rules, 0);
+        assert_eq!(coverage.conservative_allow_lines, 0);
+        assert_eq!(coverage.effective_block_rules, 0);
+        assert_eq!(coverage.ignored_lines, 1);
+        assert_eq!(coverage.unsupported_lines, 2);
+        assert!(coverage.list_blocks_suppressed);
+        assert_eq!(coverage.suppression_reasons_total, 1);
+
+        let duplicate_guards =
+            compile("@@||guard.example/one\n@@||guard.example/two\n@@||guard.example/one");
+        assert_eq!(
+            duplicate_guards.report().coverage.conservative_allow_lines,
+            3
+        );
+        assert_eq!(duplicate_guards.report().coverage.list_allow_rules, 1);
     }
 }

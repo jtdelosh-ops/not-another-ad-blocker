@@ -9,7 +9,7 @@ fn help() {
     println!(
         "NAAB DNS core — optional development resolver\n\
 Usage: naab-dns-dev --config FILE [--check]\n\
---check validates configuration and compiles filters without opening sockets.\n\
+--check validates configuration and prints a JSON DNS coverage report without opening sockets.\n\
 Runtime commands: status, activity, clear, quit. Ctrl+C or stdin EOF also stops.\n\
 No system DNS settings or native-host registration are changed."
     );
