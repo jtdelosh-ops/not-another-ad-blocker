@@ -15,11 +15,15 @@ cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --
 
 The first command validates configuration and prints compilation diagnostics without opening a socket. The second starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
 
-In another terminal, query it directly:
+In another terminal, use Windows `nslookup` interactively so the nonstandard port is applied correctly:
 
 ```sh
-nslookup -port=5354 ads.example.test 127.0.0.1
-nslookup -port=5354 example.com 127.0.0.1
+nslookup
+server 127.0.0.1
+set port=5354
+ads.example.test
+example.com
+exit
 ```
 
 The sample rule blocks `ads.example.test` with **NXDOMAIN**. `example.com` should resolve through the configured upstream, assuming it is reachable. On macOS, `dig @127.0.0.1 -p 5354 example.com` is another option. With an unreachable upstream, allowed queries return **SERVFAIL**; that is different from a filter block.
