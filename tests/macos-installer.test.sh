@@ -76,7 +76,20 @@ assert_identity() {
   [[ "$(field "$manifest" type)" == stdio ]] || fail 'Wrong native transport type'
   [[ "$(/usr/bin/plutil -extract allowed_origins raw -expect array -o - "$manifest")" == 1 ]] || fail 'Origin array must contain exactly one entry'
   [[ "$(field "$manifest" allowed_origins.0)" == "chrome-extension://$ID_A/" ]] || fail 'Wrong allowed extension origin'
-  /usr/bin/plutil -lint "$manifest" >/dev/null
+  # Node is a CI test dependency only. Chrome consumes JSON, whereas plutil's
+  # plist lint mode can reject valid JSON even when typed extraction succeeds.
+  node --input-type=module - "$manifest" "$BINARY" "$ID_A" <<'NODE'
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const [manifestPath, binaryPath, extensionId] = process.argv.slice(2);
+assert.deepEqual(JSON.parse(readFileSync(manifestPath, 'utf8')), {
+  name: 'com.naab.companion',
+  description: 'Not Another Ad Blocker local companion',
+  path: binaryPath,
+  type: 'stdio',
+  allowed_origins: [`chrome-extension://${extensionId}/`]
+});
+NODE
 }
 
 run_helper --help > "$TEST_ROOT/help.txt"
