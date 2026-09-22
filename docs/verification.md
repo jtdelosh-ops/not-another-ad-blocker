@@ -6,7 +6,7 @@ The opt-in [DNS development executable](dns-core.md) is implemented locally with
 
 A cached EasyList/EasyPrivacy pair produced 92,270 candidate DNS blocks and 1,174 allow guards/rules, but 25 unrepresentable exception cases triggered conservative suppression: **zero effective list blocks**. Explicit user domain blocks remain independent. Suppression reasons are separately sampled so ordinary diagnostic truncation cannot hide this limitation. No fresh list download or public DNS query was needed for these checks.
 
-An independent raw UDP probe received NXDOMAIN from the new executable. Windows `nslookup` could not connect from the automation environment over UDP or TCP using its scripted invocation; the resolver observed no queries from that client. The normal-terminal check should use `nslookup`, then `server 127.0.0.1` and `set port=5354`. The new DNS core has not been run on macOS. System DNS integration, managed lifecycle, extension controls and a new package/release were not implemented in this milestone.
+An independent raw UDP probe received NXDOMAIN from the new executable. Windows `nslookup` could not connect from the automation environment over UDP or TCP using its scripted invocation; the resolver observed no queries from that client. The repository now includes `scripts\test-dns.ps1`, which sends a direct UDP query to the development port without changing system DNS. The new DNS core has not been run on macOS. System DNS integration, managed lifecycle, extension controls and a new package/release were not implemented in this milestone.
 
 ## Phase 1 exit review — 2026-09-22
 
