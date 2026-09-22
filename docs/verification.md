@@ -1,5 +1,15 @@
 # Verification
 
+## Picker milestone — extension 0.4.0 / companion 0.2.1
+
+The basic picker adds hover selection, supported site-scoped selectors, an all-match preview, cancel, append-only save, and immediate undo. TypeScript checking and **67 extension tests** pass, including permission grants, cross-tab/frame/host denial, expiration, worker recreation, failed compilation, local edits, subscription preservation, and pause handling. The **8 installer/native integration tests** pass with the unchanged companion.
+
+`tests/picker-browser.mjs` passes in isolated Chromium on Windows using a loopback fixture and the real Rust compiler through a test-only local transport bridge. It checks trusted selection, prevention of page capture actions/link navigation and frame activation, keyboard preview, cancel cleanup, scoped saves/reloads, undo after another local edit, matching multiple elements, parent selection, native failure retention, and site/global controls. Existing cosmetic-child browser checks also pass. Preview and saved-state screenshots were inspected for readable controls. No existing browser profile or live advertising site is used.
+
+Run `node tests/picker-browser.mjs` with the same `NAAB_PLAYWRIGHT`, `NAAB_CHROMIUM`, and optional `NAAB_BINARY` configuration described below, after building the extension and companion. This does not prove Chrome native-host discovery on a user's machine. The earlier 0.3.1 preview was installed and tested by the user on Intel macOS Ventura 13.3.1; hands-on Mac testing of the new picker remains pending. The Phase 1 exit review, broad site compatibility, and performance budgets remain unfinished.
+
+Older milestone reports below describe their verification scope at the time; their platform and feature limitations are superseded where noted above.
+
 ## Activity milestone — extension 0.3.0 / companion 0.2.0
 
 The activity update adds Chrome's native page network-block total and a separate 300-entry session-only sample of matched network rules. TypeScript checking and all **58 extension tests** pass; the **8 installer/native integration tests** also pass against the unchanged companion. The 55 Rust tests passed at the previous milestone; no Rust source or native protocol changed in this update.

@@ -1,7 +1,7 @@
 import { NativeClient, validateCompilation, validateSubscriptionState, validateSubscriptionIds } from '../shared/native-client';
 import { diagnosticSamples } from '../shared/diagnostics';
 import type { ActivityRuleInfo } from '../shared/activity';
-import { MAX_SELECTORS, MAX_SUBSCRIPTION_NETWORK, MAX_TEXT_BYTES, OVERRIDE_ID, RecoveryRequiredError, disabledBy, emptyConfig, errorMessage, isDomain, matchesDomain, type Config, type ConfigView, type SubscriptionId, type SubscriptionProgress } from '../shared/types';
+import { MAX_SELECTORS, MAX_SUBSCRIPTION_NETWORK, MAX_TEXT_BYTES, OVERRIDE_ID, RecoveryRequiredError, disabledBy, emptyConfig, errorMessage, isDomain, isSafeSelector, matchesDomain, type Config, type ConfigView, type SubscriptionId, type SubscriptionProgress } from '../shared/types';
 
 export type BrowserRule = chrome.declarativeNetRequest.Rule;
 export interface Backend {
@@ -178,6 +178,31 @@ export class Controller {
       return this.commit({ ...this.config, text, source, compiled, updatedAt: new Date().toISOString() });
     });
   }
+  addPickerRule(host: string, selector: string, token: string): Promise<{ rule: string; added: boolean }> {
+    return this.serial(async () => {
+      const { rule, block } = pickerBlock(host, selector, token);
+      if (!this.config.enabled || disabledBy(host, this.config.disabledSites)) throw new Error('Protection is paused for this site. Enable it before saving.');
+      if (this.config.text.includes(block)) return { rule, added: true };
+      if (this.config.compiled.cosmeticRules.some(item => item.selector === selector && (!item.domains.length || item.domains.some(domain => matchesDomain(host, domain))))) return { rule, added: false };
+      const text = this.config.text + block;
+      const source = this.config.updatedAt ? this.config.source : 'Local filters';
+      const compiled = await this.native.compile(text, source);
+      if (!compiled.cosmeticRules.some(item => item.domains.includes(host) && item.selector === selector)) throw new Error('The companion does not support this rule. Update it before saving.');
+      await this.commit({ ...this.config, text, source, compiled, updatedAt: new Date().toISOString() });
+      return { rule, added: true };
+    });
+  }
+  removePickerRule(host: string, selector: string, token: string): Promise<void> {
+    return this.serial(async () => {
+      const { block } = pickerBlock(host, selector, token);
+      if (!this.config.text.includes(block)) throw new Error('This rule was edited or removed. Manage it in Lists & diagnostics.');
+      // Remove only this picker's exact marked addition, preserving concurrent
+      // imports, other picker rules, subscriptions and protection settings.
+      const text = this.config.text.replace(block, '');
+      const compiled = await this.native.compile(text, this.config.source);
+      await this.commit({ ...this.config, text, compiled, updatedAt: new Date().toISOString() });
+    });
+  }
   setEnabled(enabled: boolean): Promise<Config> {
     return this.serial(async () => this.commit({ ...this.config, enabled }));
   }
@@ -194,4 +219,10 @@ export class Controller {
   cosmetics(host: string): Promise<{ selectors: string[] }> {
     return this.serial(async () => ({ selectors: !isDomain(host) || !this.config.enabled || disabledBy(host, this.config.disabledSites) ? [] : [...new Set([...this.config.compiled.cosmeticRules, ...(this.config.subscriptions?.compiled.cosmeticRules ?? [])].filter(rule => (rule.domains.length === 0 || rule.domains.some(domain => matchesDomain(host, domain))) && !rule.excludedDomains?.some(domain => matchesDomain(host, domain))).map(rule => rule.selector))].slice(0, MAX_SELECTORS) }));
   }
+}
+
+function pickerBlock(host: string, selector: string, token: string): { rule: string; block: string } {
+  if (!isDomain(host) || !isSafeSelector(selector) || !/[.#]/.test(selector) || !/^[a-f0-9-]{36}$/.test(token)) throw new Error('Invalid picker rule.');
+  const rule = `${host}##${selector}`;
+  return { rule, block: `\n! NAAB picker ${token}\n${rule}\n` };
 }

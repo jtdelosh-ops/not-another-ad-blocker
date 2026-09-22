@@ -7,8 +7,10 @@ let host: string | null = null;
 let activeTabId: number | null = null;
 const globalToggle = element<HTMLInputElement>('global');
 const siteToggle = element<HTMLInputElement>('site-toggle');
+const pickerButton = element<HTMLButtonElement>('picker');
 function render(): void {
   if (recoveryRequired) {
+    pickerButton.disabled = true;
     renderRecoveryRequired(element('protection'), [globalToggle, siteToggle]);
     element('counts').textContent = '';
     return;
@@ -23,6 +25,7 @@ function render(): void {
   globalToggle.disabled = false;
   siteToggle.checked = !exception;
   siteToggle.disabled = !host || !config.enabled;
+  pickerButton.disabled = !host || !config.enabled || !!exception || activeTabId === null;
   element('site-label').textContent = exception ? `Resume ${exception}` : 'Protection for this site';
   element('site-note').textContent = host ? 'Site settings include subdomains. Reload the page after a change.' : 'Site controls and cosmetic filtering apply to HTTP(S) pages. Browser pages cannot be filtered.';
 }
@@ -36,6 +39,12 @@ async function change(message: unknown): Promise<void> {
 globalToggle.addEventListener('change', () => void change({ type: 'config.enabled', enabled: globalToggle.checked }));
 siteToggle.addEventListener('change', () => { if (host) void change({ type: 'config.site', host: disabledBy(host, config.disabledSites) ?? host, enabled: siteToggle.checked }); });
 element('options').addEventListener('click', () => void chrome.runtime.openOptionsPage());
+pickerButton.addEventListener('click', () => {
+  pickerButton.disabled = true;
+  void request({ type: 'picker.start', tabId: activeTabId }).then(() => window.close(), error => {
+    element('error').textContent = errorMessage(error); render();
+  });
+});
 element('activity').addEventListener('click', () => {
   void chrome.tabs.create({ url: chrome.runtime.getURL('activity.html') + (activeTabId === null ? '' : `#tab=${activeTabId}`) }).catch(error => { element('error').textContent = errorMessage(error); });
 });

@@ -1,4 +1,4 @@
-# Privacy model — extension 0.3.1 / companion 0.2.1
+# Privacy model — extension 0.4.0 / companion 0.2.1
 
 NAAB has no account, telemetry, cloud filtering service, or browsing log retained across browser sessions. Filtering decisions and the bounded activity sample stay in the browser. The companion runs as the current user when the browser launches it through Native Messaging, opens no listening socket, and exits when stdin closes.
 
@@ -23,9 +23,11 @@ The companion stores the downloaded public list text, metadata, and immutable co
 
 Local imports travel only between the extension and the local companion. Raw subscription lists are read from/written to the dedicated cache directory; native protocol callers cannot request arbitrary URLs, filenames, or paths. Fatal framing errors go to stderr without filter contents. The companion has no browsing-activity logger.
 
+The visual picker keeps its selection and preview in the current page's content script. A short-lived permission token, tab ID, hostname, and the chosen selector stay in trusted session storage. Closing the picker or tab removes its grant; grants also expire after ten minutes and are lost on extension/browser restart. Saving sends the generated site rule, together with existing local filter text, to the local companion for compilation. It sends no page HTML or screenshot and adds no external network request. Saved picker rules remain in the local list until removed. Private tabs cannot start or save picker rules.
+
 ## Browser access and untrusted lists
 
-HTTP/HTTPS host permissions allow DNR and cosmetics to work on visited sites. The top-document content script receives only the scoped, validated cosmetic selectors it needs. The UI gets bounded diagnostics and metadata, while large network arrays remain in the background's committed state. Privileged changes and native requests are accepted only from the extension's own UI; page-content requests are restricted to cosmetics for the sending page.
+HTTP/HTTPS host permissions allow DNR and cosmetics to work on visited sites. The top-document content script receives only the scoped, validated cosmetic selectors it needs. The UI gets bounded diagnostics and metadata, while large network arrays remain in the background's committed state. General settings, list imports, and native status requests are accepted only from the extension's own UI. Content scripts may request cosmetics for their sending page; picker save/undo additionally requires a live grant created by the extension UI and bound to that tab and hostname. This does not grant page scripts access to native messaging or arbitrary filter imports.
 
 `declarativeNetRequestFeedback` lets the unpacked developer extension observe its own rule matches and read Chrome's page counter. Other extensions' blocking and cosmetically hidden elements are not counted. Detailed debug events are unavailable in packaged installations; the UI reports unavailable capabilities without inventing totals. See the official [DNR API](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest), [action counter API](https://developer.chrome.com/docs/extensions/reference/api/action#method-getBadgeText), and [session storage documentation](https://developer.chrome.com/docs/extensions/reference/api/storage#property-session).
 

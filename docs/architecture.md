@@ -1,4 +1,4 @@
-# Architecture — extension 0.3.1 / companion 0.2.1
+# Architecture — extension 0.4.0 / companion 0.2.1
 
 The browser enforces filtering. The Rust companion compiles local filter text and downloads, compiles, and caches the fixed EasyList/EasyPrivacy subscriptions. Native Messaging starts the companion on demand; each `sendNativeMessage` request may run in a new process. Subscription snapshots therefore persist on disk. The browser retains its own committed compiled rules and settings, so ongoing filtering does not depend on the companion or network being available.
 
@@ -32,6 +32,14 @@ The subscription compiler retains supported network exceptions before selecting 
 Cosmetic selectors are restricted ASCII tag/class/ID compounds, optionally followed by one `:has(> child)` check. The child must be another compound containing at least one class or ID; for example, `div:has(> .ad-label)` is supported, while `div:has(> video)` is not. The entire selector stays within 512 bytes. Nested checks, other pseudo-selectors/combinators, and attribute selectors are rejected by both Rust compilation and browser-side validation. The content script installs native CSS; it does not run a procedural selector engine.
 
 Positive and negative domain scope is supported for subscriptions; local imports keep positive scope only. Content scripts run only in the top document. They receive at most 12,000 validated selectors (10,000 subscription + 2,000 local), not raw lists, network arrays, or browsing history. A direct-child rule remains dependent on its marker element being present; support for this syntax does not automatically install a site-specific rule.
+
+## Visual picker
+
+The popup starts a picker only in an active, non-private HTTP(S) tab with protection enabled. The background stores a random, ten-minute grant in trusted session storage, bound to the tab and hostname. Only that top-frame content script may save or undo with the token; ordinary web-page senders cannot start a picker or use other privileged routes. Session storage retains the grant across service-worker suspension.
+
+The content script builds a closed-shadow control panel and derives bounded candidates using the existing selector grammar. Page-root matches are rejected. Trusted user input selects an element, previews all matches using a temporary stylesheet, and confirms saving. Cancel removes only temporary UI/styles. No page content is sent to the companion; only the site-scoped filter travels through the existing compiler.
+
+Saving appends a marked rule to the current local filter text inside the controller's mutation queue. Compilation and the existing commit/rollback path preserve subscriptions and other local changes. Immediate undo removes only the exact marked addition, refusing to erase it if it has been edited. A rule already present in local filters is not claimed for undo. Picker creation and undo require the companion; ongoing filtering does not.
 
 ## Quota and precedence
 
@@ -67,4 +75,4 @@ Debug events carry no rule-generation timestamp. Rule details and the tab hostna
 
 Request credentials/query/fragment are removed before memory/storage. Writes are batched and serialized, and storage failure is surfaced separately from filtering. Only the extension's allowlisted top-level interfaces can read or clear activity. Content scripts cannot access the session store. Current-tab views retain earlier pages within that tab; the log is explicitly a recent sample rather than an exact page history. See [privacy details](privacy-model.md).
 
-Deferred work includes the element picker, fuller filter compatibility, SQLite if needed, Firefox, and all DNS/proxy/system-network features. `LOCAL_ONLY` remains a reserved diagnostic target; there is no native request-enforcement engine.
+Deferred work includes advanced selector generation and network correlation, fuller filter compatibility, SQLite if needed, Firefox, and all DNS/proxy/system-network features. `LOCAL_ONLY` remains a reserved diagnostic target; there is no native request-enforcement engine.

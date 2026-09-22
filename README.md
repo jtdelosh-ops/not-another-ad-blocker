@@ -14,6 +14,7 @@ The goal is filtering you can understand and control: choose your lists, add you
 - **Hides matching page elements** with cosmetic rules, including a limited check that identifies an ad container by a child class or ID.
 - **Downloads EasyList and EasyPrivacy on request**, then compiles the supported rules on your machine.
 - **Accepts your own filters** separately from downloaded lists, so refreshing a subscription preserves your custom rules.
+- **Lets you pick an unwanted element**, preview the matching elements, and save a site-specific cosmetic rule with immediate undo.
 - **Lets you pause protection globally or for a site**, including that site's subdomains.
 - **Shows page network-block counts and recent rule matches** in the unpacked extension, with a bounded activity sample stored locally for the browser session.
 - **Explains compilation results**, including unsupported syntax and rules omitted because of browser limits or exception handling.
@@ -43,17 +44,17 @@ See the [privacy model](docs/privacy-model.md) for storage locations and the bou
 
 ## Where the project stands
 
-This branch contains extension **0.3.1** and companion **0.2.1**, including subscriptions, local filters, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged Chrome build; it has been tested on an Intel Mac running Ventura 13.3.1. Broader platform testing remains in progress.
+This branch contains extension **0.4.0** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged Chrome build. The earlier 0.3.1 preview was tested on an Intel Mac running Ventura 13.3.1; the new picker's hands-on Mac check and broader platform testing remain in progress.
 
 Current limits include:
 
 - Partial EasyList/EasyPrivacy compatibility; a downloaded line is not necessarily an active rule.
 - Manual list refreshes and cosmetic filtering limited to the top-level page, outside embedded frames.
 - No dedicated, reliable YouTube video-ad blocking.
-- No visual element picker yet.
+- The basic picker uses supported class/ID selectors in the top document; changing class names can make a saved rule stop matching.
 - Chromium browsers only; Firefox, Safari, and system-wide filtering are not implemented.
 
-The next Phase 1 work is the visual element picker, broader compatibility and performance testing, and an exit review. The longer-term vision is a local browser privacy firewall with additional enforcement options. DNS filtering and possible proxy capabilities belong to later roadmap phases, not the current product.
+The next Phase 1 work is broader compatibility and performance testing and an exit review. The longer-term vision is a local browser privacy firewall with additional enforcement options. DNS filtering and possible proxy capabilities belong to later roadmap phases, not the current product.
 
 ## Try it or work on it
 

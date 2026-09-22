@@ -9,7 +9,7 @@ For a first installation, start with [Build and install from source](#build-and-
 If you already loaded the extension and registered the companion at this repository's release-binary path:
 
 1. Build or replace both the extension and companion at their existing paths. For the downloaded Mac package, follow [Upgrade an existing Mac preview](macos-testing.md#upgrade-an-existing-mac-preview).
-2. Open `chrome://extensions` (or `edge://extensions`), click the existing extension's **Reload** button, and confirm version **0.3.1**. Accept a permission prompt if upgrading from a version before 0.3.0, which added `declarativeNetRequestFeedback` for network counts and local debug activity.
+2. Open `chrome://extensions` (or `edge://extensions`), click the existing extension's **Reload** button, and confirm version **0.4.0**. Accept a permission prompt if upgrading from a version before 0.3.0, which added `declarativeNetRequestFeedback` for network counts and local debug activity.
 3. Open **Lists & diagnostics**, click **Check companion**, and confirm **0.2.1** before compiling the new cosmetic syntax.
 4. Reload an HTTP(S) page and open the NAAB popup. Its network block count and **Recent activity** remain separate from cosmetic hiding. Clearing the activity sample does not reset the browser's page counter.
 
@@ -58,6 +58,18 @@ node scripts/native-host.mjs --extension-id YOUR_EXTENSION_ID --binary companion
 Add `--browser edge` for Microsoft Edge. Chrome is the default. The packaged Intel Mac helper has been tested with Chrome on Ventura 13.3.1; broader platform and browser installation coverage remains in progress. The installer does not yet support other operating systems or browsers.
 
 Open **Lists & diagnostics**, check the companion, and download your selected subscriptions. The bundled `.test` demo remains useful for isolated filtering tests, but its reserved domains are not an everyday ad-blocking list.
+
+## Block an element with the picker
+
+1. Open a normal website with NAAB protection enabled.
+2. Open the NAAB popup and click **Block something on this page**.
+3. Point at the unwanted element and click. The panel shows the site rule and how many elements match it.
+4. Click **Preview**. Use **Restore preview**, **Select parent**, or **Pick another** to adjust the selection. **Cancel** or **Escape** restores the temporary preview without saving.
+5. Click **Save rule** to append it to your local filters. The companion must be available to compile the rule. **Undo saved rule** removes that specific addition while the panel remains open; **Done** closes the panel.
+
+For later removal, delete the corresponding rule and its `! NAAB picker` comment under **Local filter list**, retaining other rules, then compile. Rules apply to the selected hostname and its subdomains. They hide content visually and do not increment the network counter. Existing local filters, subscriptions, and site exceptions are preserved.
+
+This basic picker supports the existing restricted class/ID selector grammar. It cannot pick inside embedded frames or a component's shadow tree. Elements without a supported selector require choosing a parent or another element. Class changes can break saved rules; broad selector generation and automatic network correlation are deferred. Private tabs are not supported. Picker permissions expire after ten minutes; restart from the popup if the session expires. Reload existing pages after updating the extension so they receive the new content script.
 
 ## Visual check without live advertising
 
@@ -125,7 +137,7 @@ Native integration tests use the extension's actual client with framed stdin/std
 
 GitHub Actions runs the deterministic extension, Rust, installer, and native integration checks on Windows and macOS for pull requests and pushes to `main`. CI uses Node.js 22, pnpm 11.19.0, and Rust 1.98.1 with locked dependencies; the jobs are named `Test (windows-latest)` and `Test (macos-latest)`. Live list downloads and browser smoke tests remain separate checks, so CI does not verify browser registration or advertising availability.
 
-Next work covers the visual element picker with preview/undo; more compatibility and performance tests; broader macOS installation verification; and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
+Next work covers more compatibility and performance tests, broader macOS installation verification, and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
 
 EasyList and EasyPrivacy are maintained by **The EasyList authors** and are downloaded on request, not bundled into this repository. Their copyright and dual-license details are on the official [EasyList about page](https://easylist.to/pages/about.html). No distribution license has been selected for NAAB itself.
 

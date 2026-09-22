@@ -4,6 +4,7 @@ import { NativeClient } from '../shared/native-client';
 import { RecoveryRequiredError, errorMessage, hostname } from '../shared/types';
 import { ActivityLog, blockedCountText, supportsBlockedCount } from './activity';
 import { ACTIVITY_LIMIT, type ActivityAccess } from '../shared/activity';
+import { Picker, type PickerGrant } from './picker';
 
 const storageReady = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const sessionReady = chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
@@ -89,7 +90,15 @@ const activity: ActivityAccess = {
   },
   clear: () => activityLog.clear()
 };
-const route = createRouter(controller, chrome.runtime.id, chrome.runtime.getURL('/'), activity);
+const picker = new Picker(controller, {
+  tab: id => chrome.tabs.get(id),
+  async read(id) { await sessionReady; return (await chrome.storage.session.get(`picker:${id}`))[`picker:${id}`] as PickerGrant | undefined; },
+  async write(id, grant) { await sessionReady; await chrome.storage.session.set({ [`picker:${id}`]: grant }); },
+  async remove(id) { await sessionReady; await chrome.storage.session.remove(`picker:${id}`); },
+  start: (id, token) => chrome.tabs.sendMessage(id, { type: 'picker.start', token }, { frameId: 0 })
+});
+chrome.tabs.onRemoved.addListener(id => { void sessionReady.then(() => chrome.storage.session.remove(`picker:${id}`)).catch(() => {}); });
+const route = createRouter(controller, chrome.runtime.id, chrome.runtime.getURL('/'), activity, picker);
 chrome.runtime.onMessage.addListener((message: unknown, sender, respond) => {
   void route(message, sender).then(payload => respond({ ok: true, payload }), error => respond({ ok: false, error: errorMessage(error), code: error instanceof RecoveryRequiredError ? error.code : undefined }));
   return true;

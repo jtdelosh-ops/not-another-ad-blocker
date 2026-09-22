@@ -3,12 +3,17 @@ import type { Controller } from './controller';
 import { configView } from './controller';
 import { validateSubscriptionIds } from '../shared/native-client';
 import type { ActivityAccess } from '../shared/activity';
+import type { Picker } from './picker';
 
-export interface Sender { id?: string; url?: string; tab?: { id?: number }; frameId?: number }
-export function createRouter(controller: Controller, extensionId: string, extensionURL: string, activity?: ActivityAccess) {
+export interface Sender { id?: string; url?: string; tab?: { id?: number; incognito?: boolean }; frameId?: number }
+export function createRouter(controller: Controller, extensionId: string, extensionURL: string, activity?: ActivityAccess, picker?: Picker) {
   return async (message: unknown, sender: Sender): Promise<unknown> => {
     if (sender.id !== extensionId || !message || typeof message !== 'object') throw new Error('Unauthorized message.');
     const input = message as Record<string, unknown>;
+    if (['picker.save', 'picker.undo', 'picker.cancel'].includes(input.type as string)) {
+      if (!picker) throw new Error('Picker unavailable.');
+      return picker.handle(input, sender);
+    }
     if (input.type === 'cosmetics.get') {
       const host = hostname(sender.url);
       if (!sender.tab || sender.frameId !== 0 || !host) throw new Error('Cosmetic configuration is only available to an HTTP(S) top frame.');
@@ -23,6 +28,9 @@ export function createRouter(controller: Controller, extensionId: string, extens
     const trustedTab = sender.frameId === 0 && ['options.html', 'activity.html'].map(name => new URL(name, extensionURL).href).includes(page);
     if (!trustedPage && !trustedTab) throw new Error('This operation is only available from the extension interface.');
     switch (input.type) {
+      case 'picker.start':
+        if (!picker) throw new Error('Picker unavailable.');
+        return picker.start(input.tabId);
       case 'activity.get':
         if (input.tabId !== null && (!Number.isSafeInteger(input.tabId) || (input.tabId as number) < 0 || (input.tabId as number) > 2_147_483_647)) throw new Error('Invalid activity tab.');
         if (!activity) throw new Error('Activity is unavailable.');
