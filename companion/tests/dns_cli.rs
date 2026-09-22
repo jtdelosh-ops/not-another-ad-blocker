@@ -22,7 +22,58 @@ fn dns_development_cli_checks_sample_without_listening_and_rejects_bad_arguments
     assert_eq!(report["event"], "validated");
     assert_eq!(report["listen"], "127.0.0.1:5354");
     assert!(result.stderr.is_empty());
-    for arguments in [vec![], vec!["--wat"], vec!["--config"]] {
+    let pretty = Command::new(executable)
+        .args(["--config", "examples/dns-dev.json", "--check", "--pretty"])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(pretty.status.success());
+    let pretty_stdout = String::from_utf8(pretty.stdout).unwrap();
+    assert!(pretty_stdout.starts_with("DNS coverage report\n"));
+    assert!(pretty_stdout.contains("Status: READY — list blocking active"));
+    assert!(pretty_stdout.contains("Active block rules:      1"));
+    assert!(pretty_stdout.contains("Diagnostics:"));
+    assert!(pretty_stdout.contains("this rule was omitted"));
+    assert!(serde_json::from_str::<serde_json::Value>(&pretty_stdout).is_err());
+
+    let suppression_root = std::env::temp_dir().join(format!(
+        "naab-dns-pretty-{}-{}",
+        std::process::id(),
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir(&suppression_root).unwrap();
+    fs::write(
+        suppression_root.join("rules.txt"),
+        format!("{}!#if false\n", "unsupported\n".repeat(200)),
+    )
+    .unwrap();
+    fs::write(
+        suppression_root.join("config.json"),
+        serde_json::json!({
+            "upstreams": ["192.0.2.1:53"],
+            "filterLists": [{"name": "Suppression fixture", "path": "rules.txt"}]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let suppression_config = suppression_root.join("config.json");
+    let suppression_config = suppression_config.to_str().unwrap();
+    let suppression = Command::new(executable)
+        .args(["--config", suppression_config, "--check", "--pretty"])
+        .output()
+        .unwrap();
+    assert!(suppression.status.success());
+    let suppression_stdout = String::from_utf8(suppression.stdout).unwrap();
+    assert!(suppression_stdout.contains("Safety suppression reasons: 1 (1 shown)"));
+    assert!(suppression_stdout.contains("Unsupported preprocessing directive"));
+    fs::remove_dir_all(&suppression_root).unwrap();
+
+    for arguments in [
+        vec![],
+        vec!["--wat"],
+        vec!["--config"],
+        vec!["--config", "examples/dns-dev.json", "--pretty"],
+    ] {
         let result = Command::new(executable).args(arguments).output().unwrap();
         assert!(!result.status.success());
         assert!(result.stdout.is_empty());

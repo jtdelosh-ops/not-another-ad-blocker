@@ -10,6 +10,7 @@ From the repository root, with Rust installed:
 
 ```sh
 cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check
+cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check --pretty
 cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json
 ```
 
@@ -19,7 +20,7 @@ To save the JSON report for later comparison:
 cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check | Set-Content -Encoding UTF8 dns-coverage.json
 ```
 
-The first command validates configuration and prints a JSON DNS coverage report without opening a socket. The report distinguishes candidate block lines from deduplicated candidate rules and effective rules after safety suppression. The runtime command starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
+The first command validates configuration and prints a JSON DNS coverage report without opening a socket. Add `--pretty` for a readable summary with diagnostics; JSON remains the default for scripts. The report distinguishes candidate block lines from deduplicated candidate rules and effective rules after safety suppression. The runtime command starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
 
 The automated Windows `nslookup` invocation did not reach the development resolver in our test environment. Use NAAB's dependency-free PowerShell probe instead:
 
