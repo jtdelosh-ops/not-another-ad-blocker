@@ -1,17 +1,18 @@
 # Not Another Ad Blocker
 
-Version **0.2.0** adds manual EasyList and EasyPrivacy downloads to the Chromium Manifest V3 extension and Rust companion. Supported rules compile locally into browser network rules and simple cosmetic hiding. Local filters, global protection, and per-site settings remain separate and persist across updates.
+Extension version **0.3.0** adds page network block counts and a local activity viewer to the Chromium Manifest V3 extension. It continues to use companion **0.2.0** for manual EasyList/EasyPrivacy downloads and local compilation into browser network rules and simple cosmetic hiding. Local filters, global protection, and per-site settings remain separate and persist across updates.
 
-This is an early developer build with partial subscription compatibility. Activity history, block counts, and the visual element picker remain unfinished, so the full Phase 1 roadmap is not complete. A new installation starts with zero rules until you download subscriptions or import local filters.
+This is an early developer build with partial subscription compatibility. The visual element picker, broader compatibility/performance validation, and the Phase 1 exit review remain unfinished. A new installation starts with zero rules until you download subscriptions or import local filters.
 
 ## Update an existing installation
 
 If you already loaded the extension and registered the companion at this repository's release-binary path:
 
-1. Open `chrome://extensions` (or `edge://extensions`) and click the extension's **Reload** button. Accept an updated permission prompt if the browser displays one. Version 0.2.0 adds `unlimitedStorage` for the local compiled-rule cache and its recovery journal.
-2. Open the extension's **Lists & diagnostics** page and click **Check companion**. It should report **Local companion 0.2.0** and that EasyList/EasyPrivacy downloads are available.
-3. Select **EasyList — ads**, **EasyPrivacy — trackers**, or both. Click **Download / refresh selected** and wait for the saved confirmation.
-4. Review the list metadata and unsupported/safety-omission counts, then reload your open pages.
+1. Open `chrome://extensions` (or `edge://extensions`) and click the extension's **Reload** button. Accept an updated permission prompt if displayed: version 0.3.0 adds `declarativeNetRequestFeedback` for network counts and local debug activity.
+2. Reload an HTTP(S) page and open the NAAB popup. The page's network block count appears separately from the number of rules loaded.
+3. Click **Recent activity** for recent matched rules. Use **Refresh** to update the view or **Clear all recent activity** to erase the sample. Clearing the sample does not reset the browser's page counter.
+
+Existing downloaded lists and protection settings remain saved. Companion 0.2.0 remains current; no companion rebuild, list download, or registration change is needed for this activity update.
 
 The extension folder and registered executable stay at the same paths, so you do not need to copy a new extension ID or repeat registration. Registration is needed again if the extension ID or executable path changes. If the companion still reports an older version, make sure the updated release executable is at the registered path.
 
@@ -118,7 +119,7 @@ Native integration tests use the extension's actual client with framed stdin/std
 
 GitHub Actions runs the deterministic extension, Rust, installer, and native integration checks on Windows and macOS for pull requests and pushes to `main`. CI uses Node.js 22, pnpm 11.19.0, and Rust 1.98.1 with locked dependencies; the jobs are named `Test (windows-latest)` and `Test (macos-latest)`. Live list downloads and browser smoke tests remain separate checks, so CI does not verify browser registration or advertising availability.
 
-Next work covers activity diagnostics and honest block counts; the visual element picker with preview/undo; more compatibility and performance tests; macOS installation verification; and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
+Next work covers the visual element picker with preview/undo; more compatibility and performance tests; macOS installation verification; and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
 
 EasyList and EasyPrivacy are maintained by **The EasyList authors** and are downloaded on request, not bundled into this repository. Their copyright and dual-license details are on the official [EasyList about page](https://easylist.to/pages/about.html). No distribution license has been selected for NAAB itself.
 

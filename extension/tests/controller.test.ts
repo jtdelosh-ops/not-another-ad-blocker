@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Controller, desiredRules, type Backend, type BrowserRule } from '../src/background/controller';
 import { createRouter } from '../src/background/routes';
 import { NativeClient } from '../src/shared/native-client';
-import { emptyConfig, OVERRIDE_ID, RESOURCE_TYPES, type Compilation } from '../src/shared/types';
+import { emptyConfig, OVERRIDE_ID, RESOURCE_TYPES, SUBSCRIPTION_URLS, type Compilation } from '../src/shared/types';
 import { fixtureClient, subscriptionFixture, networkRule } from './subscription-fixtures';
 
 const compiled = (): Compilation => ({ networkRules: [{ id: 7, priority: 1, action: { type: 'block' }, condition: { urlFilter: '||ads.example.test^', resourceTypes: [...RESOURCE_TYPES] } }], cosmeticRules: [{ domains: ['example.test'], selector: '.advertisement', raw: 'example.test##.advertisement', source: 'Test' }], diagnostics: [{ line: 1, raw: '||ads.example.test^', target: 'MV3_NETWORK', message: 'Compiled successfully' }], stats: { network: 1, cosmetic: 1, unsupported: 0, ignored: 0 } });
@@ -54,6 +54,7 @@ test('browser rejection leaves saved and active rules intact', async () => {
   assert.deepEqual(await controller.snapshot(), old);
   assert.deepEqual(backend.active, desiredRules(old));
   assert.equal(backend.stored.pending, undefined);
+  assert.equal(controller.describeActivityRule(1)?.source, 'Local list: Test');
 });
 test('storage failure rolls DNR back to previous rules', async () => {
   const { controller, backend } = setup();
@@ -64,6 +65,7 @@ test('storage failure rolls DNR back to previous rules', async () => {
   assert.deepEqual(backend.active, desiredRules(old));
   assert.deepEqual(await controller.snapshot(), old);
   assert.equal(backend.stored.pending, undefined);
+  assert.equal(controller.describeActivityRule(1)?.source, 'Local list: Test');
 });
 test('worker restart discards interrupted pending update and restores committed rules', async () => {
   const backend = new FakeBackend();
@@ -84,6 +86,7 @@ test('failed rollback stops reporting a protection state until extension restart
     await write(values);
   };
   await assert.rejects(controller.setEnabled(false), /Protection state is unknown/);
+  assert.equal(controller.describeActivityRule(1), null);
   await assert.rejects(controller.snapshot(), /Protection state is unknown/);
   await assert.rejects(controller.setEnabled(true), /reload the extension/);
   backend.failRuleUpdate = false;
@@ -91,6 +94,7 @@ test('failed rollback stops reporting a protection state until extension restart
   const recovered = setup(backend).controller;
   assert.equal((await recovered.snapshot()).enabled, true);
   assert.equal(backend.active.length, 1);
+  assert.equal(recovered.describeActivityRule(1)?.action, 'block');
 });
 test('global off removes DNR and cosmetics; import while off stays off; enabling restores rules', async () => {
   const { controller, backend } = setup();
@@ -280,4 +284,106 @@ test('web pages cannot read download progress, initiate subscriptions, remove th
   const view = await route({ type: 'config.get' }, { id: 'extension-id', url: 'chrome-extension://extension-id/options.html', tab: { id: 2 }, frameId: 0 }) as any;
   assert.equal(view.compiled.networkRules, undefined);
   assert.equal(view.subscriptions.compiled, undefined);
+});
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
+}
+test('activity provenance follows installed IDs and preserves allow actions without claiming exact subscription lines', async () => {
+  const backend = new FakeBackend();
+  const subscriptions = subscriptionFixture();
+  subscriptions.manifest.lists.push({ ...subscriptions.manifest.lists[0], id: 'easyprivacy', title: 'EasyPrivacy', url: SUBSCRIPTION_URLS.easyprivacy });
+  subscriptions.manifest.listStats.push({ ...subscriptions.manifest.listStats[0], id: 'easyprivacy' });
+  subscriptions.compiled.networkRules.push(networkRule(51, 'allow'), { id: 80, priority: 2, action: { type: 'allowAllRequests' }, condition: { urlFilter: '||exempt.test^', resourceTypes: ['main_frame', 'sub_frame'] } });
+  subscriptions.compiled.stats.network = subscriptions.manifest.stats.network = subscriptions.manifest.counts.network = subscriptions.manifest.coverage.networkSupported = 3;
+  const local = compiled(); local.networkRules.push(networkRule(99, 'allow')); local.stats.network = 2;
+  backend.stored.config = { ...emptyConfig(), compiled: local, source: 'My rules', subscriptions, disabledSites: ['paused.test'] };
+  const { controller } = setup(backend);
+  await controller.snapshot();
+  assert.deepEqual([1, 2, 3, 4, 5, OVERRIDE_ID].map(id => controller.describeActivityRule(id)?.action), ['block', 'allow', 'allowAllRequests', 'block', 'allow', 'allowAllRequests']);
+  assert.equal(controller.describeActivityRule(1)?.source, 'EasyList + EasyPrivacy subscriptions');
+  assert.equal(controller.describeActivityRule(4)?.source, 'Local list: My rules');
+  assert.match(controller.describeActivityRule(4)!.condition, /Compiled rule \(priority 3\)/);
+  assert.match(controller.describeActivityRule(5)!.condition, /Compiled rule \(priority 4\)/);
+  assert.equal(controller.describeActivityRule(OVERRIDE_ID)?.source, 'Site exception');
+  assert.match(controller.describeActivityRule(OVERRIDE_ID)!.condition, /paused\.test/);
+  for (const invalid of [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, 6, 7, 51, OVERRIDE_ID + 1]) assert.equal(controller.describeActivityRule(invalid), null);
+  const captured = controller.describeActivityRule(4)!; captured.source = 'Tampered';
+  assert.equal(controller.describeActivityRule(4)?.source, 'Local list: My rules');
+  await controller.removeSubscriptions();
+  assert.equal(controller.describeActivityRule(1)?.source, 'Local list: My rules');
+  assert.equal(controller.describeActivityRule(4), null, 'Reassigned IDs cannot retain old descriptions');
+  await controller.setEnabled(false);
+  assert.equal(controller.describeActivityRule(1), null);
+  assert.equal(controller.describeActivityRule(OVERRIDE_ID), null);
+});
+test('activity descriptions sample packed domains and cap source and condition text', async () => {
+  const backend = new FakeBackend();
+  const subscriptions = subscriptionFixture();
+  subscriptions.manifest.lists[0].title = 'Long title '.repeat(23);
+  subscriptions.compiled.networkRules[0].condition = { requestDomains: Array.from({ length: 1000 }, (_, i) => `ad${i}.example.test`), resourceTypes: [...RESOURCE_TYPES] };
+  backend.stored.config = { ...emptyConfig(), subscriptions };
+  const { controller } = setup(backend); await controller.snapshot();
+  const description = controller.describeActivityRule(1)!;
+  assert.ok(description.source.length <= 200);
+  assert.ok(description.condition.length <= 1024);
+  assert.match(description.condition, /"total":1000/);
+  assert.match(description.condition, /ad0\.example\.test/);
+  assert.doesNotMatch(description.condition, /ad999/);
+});
+test('activity provenance is unavailable until startup succeeds, including startup failure', async () => {
+  const backend = new FakeBackend(); backend.stored.config = { ...emptyConfig(), compiled: compiled() };
+  const gate = deferred(); const read = backend.read.bind(backend);
+  backend.read = async () => { await gate.promise; return read(); };
+  const { controller } = setup(backend);
+  assert.equal(controller.describeActivityRule(1), null);
+  gate.resolve(); await controller.snapshot();
+  assert.equal(controller.describeActivityRule(1)?.action, 'block');
+  const failed = new FakeBackend(); failed.failRuleUpdate = true;
+  failed.stored.config = backend.stored.config;
+  const broken = setup(failed).controller;
+  await assert.rejects(broken.snapshot(), /DNR rejected/);
+  assert.equal(broken.describeActivityRule(1), null);
+});
+test('activity provenance is unavailable throughout deferred browser replacement and config persistence', async () => {
+  for (const phase of ['replace', 'write'] as const) {
+    const { controller, backend } = setup(); await controller.import('old', 'Original');
+    const entered = deferred(); const release = deferred();
+    if (phase === 'replace') {
+      const replace = backend.replace.bind(backend);
+      backend.replace = async (remove, add) => { entered.resolve(); await release.promise; await replace(remove, add); };
+    } else {
+      const write = backend.write.bind(backend);
+      backend.write = async values => { if ('config' in values) { entered.resolve(); await release.promise; } await write(values); };
+    }
+    const update = controller.import('new', 'Replacement');
+    await entered.promise;
+    assert.equal(controller.describeActivityRule(1), null, phase);
+    release.resolve(); await update;
+    assert.equal(controller.describeActivityRule(1)?.source, 'Local list: Replacement');
+  }
+});
+test('activity provenance remains unavailable during rollback and returns only after restoration', async () => {
+  const { controller, backend } = setup(); await controller.import('old', 'Original');
+  const entered = deferred(); const release = deferred();
+  const replace = backend.replace.bind(backend);
+  backend.replace = async (remove, add) => {
+    if (add.length) { entered.resolve(); await release.promise; }
+    await replace(remove, add);
+  };
+  backend.failConfigWrite = true;
+  const update = controller.setEnabled(false);
+  const rejected = assert.rejects(update, /previous rules restored/);
+  await entered.promise;
+  assert.equal(controller.describeActivityRule(1), null);
+  release.resolve(); await rejected;
+  assert.equal(controller.describeActivityRule(1)?.source, 'Local list: Original');
+});
+test('a failed pending write keeps previous activity provenance available', async () => {
+  const { controller, backend } = setup(); await controller.import('old', 'Original');
+  backend.write = async () => { throw new Error('Pending write failed'); };
+  await assert.rejects(controller.setEnabled(false), /Pending write failed/);
+  assert.equal(controller.describeActivityRule(1)?.source, 'Local list: Original');
 });

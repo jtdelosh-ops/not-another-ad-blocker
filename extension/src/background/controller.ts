@@ -1,5 +1,6 @@
 import { NativeClient, validateCompilation, validateSubscriptionState, validateSubscriptionIds } from '../shared/native-client';
 import { diagnosticSamples } from '../shared/diagnostics';
+import type { ActivityRuleInfo } from '../shared/activity';
 import { MAX_SELECTORS, MAX_SUBSCRIPTION_NETWORK, MAX_TEXT_BYTES, OVERRIDE_ID, RecoveryRequiredError, disabledBy, emptyConfig, errorMessage, isDomain, matchesDomain, type Config, type ConfigView, type SubscriptionId, type SubscriptionProgress } from '../shared/types';
 
 export type BrowserRule = chrome.declarativeNetRequest.Rule;
@@ -34,11 +35,26 @@ export function desiredRules(config: Config): BrowserRule[] {
   });
   return rules;
 }
+function boundedText(value: string, limit: number): string {
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+}
+function describeCondition(condition: BrowserRule['condition'], priority: number): string {
+  // Packed rules can contain 1,000 domains. Describe only a bounded sample;
+  // this is the compiled condition, not a claim about an original filter line.
+  const summary: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(condition)) {
+    summary[key] = Array.isArray(value) && value.length > 3
+      ? { sample: value.slice(0, 3), total: value.length }
+      : value;
+  }
+  return boundedText(`Compiled rule (priority ${priority}): ${JSON.stringify(summary)}`, 1024);
+}
 export class Controller {
   private config: Config = emptyConfig();
   private queue: Promise<unknown> = Promise.resolve();
   private readonly ready: Promise<void>;
   private recoveryError: Error | undefined;
+  private activityRulesReady = false;
   private refreshing = false;
   private subscriptionGeneration = 0;
   private progress: SubscriptionProgress = { phase: 'idle' };
@@ -54,6 +70,7 @@ export class Controller {
     // If termination interrupted a write, uncommitted pending state is discarded.
     await this.applyRules(desiredRules(this.config));
     if (stored.pending !== undefined) await this.backend.remove('pending');
+    this.activityRulesReady = true;
   }
   private serial<T>(action: () => Promise<T>): Promise<T> {
     const job = this.queue.then(async () => { await this.ready; if (this.recoveryError) throw this.recoveryError; return action(); });
@@ -68,27 +85,61 @@ export class Controller {
   }
   private async commit(next: Config): Promise<Config> {
     const previous = structuredClone(this.config);
-    await this.backend.write({ pending: next });
-    try { await this.applyRules(desiredRules(next)); }
-    catch (error) {
-      await this.backend.remove('pending').catch(() => {});
-      throw new Error(`Browser rule update failed: ${errorMessage(error)}`);
-    }
-    try { await this.backend.write({ config: next }); }
-    catch (error) {
-      try {
-        await this.applyRules(desiredRules(previous));
-        await this.backend.remove('pending');
-      } catch (rollback) {
-        this.recoveryError = new RecoveryRequiredError(`Settings could not be saved and rule rollback failed. Protection state is unknown; reload the extension to recover. ${errorMessage(rollback)}`);
-        throw this.recoveryError;
+    // IDs are reused when lists change. Never attribute an event against the
+    // old config while Chrome and committed storage are being reconciled.
+    this.activityRulesReady = false;
+    try {
+      await this.backend.write({ pending: next });
+      try { await this.applyRules(desiredRules(next)); }
+      catch (error) {
+        await this.backend.remove('pending').catch(() => {});
+        throw new Error(`Browser rule update failed: ${errorMessage(error)}`);
       }
-      throw new Error(`Settings could not be saved; previous rules restored. ${errorMessage(error)}`);
+      try { await this.backend.write({ config: next }); }
+      catch (error) {
+        try {
+          await this.applyRules(desiredRules(previous));
+          await this.backend.remove('pending');
+        } catch (rollback) {
+          this.recoveryError = new RecoveryRequiredError(`Settings could not be saved and rule rollback failed. Protection state is unknown; reload the extension to recover. ${errorMessage(rollback)}`);
+          throw this.recoveryError;
+        }
+        throw new Error(`Settings could not be saved; previous rules restored. ${errorMessage(error)}`);
+      }
+      this.config = next;
+      await this.backend.remove('pending').catch(() => {});
+      await this.backend.notify().catch(() => {});
+      return structuredClone(this.config);
+    } finally {
+      // Ordinary failures leave/restore the previous rules; failed rollback
+      // latches recoveryError and keeps provenance unavailable until restart.
+      this.activityRulesReady = !this.recoveryError;
     }
-    this.config = next;
-    await this.backend.remove('pending').catch(() => {});
-    await this.backend.notify().catch(() => {});
-    return structuredClone(this.config);
+  }
+  describeActivityRule(ruleId: number): ActivityRuleInfo | null {
+    if (!this.activityRulesReady || this.recoveryError || !this.config.enabled || !Number.isSafeInteger(ruleId) || ruleId < 1) return null;
+    if (ruleId >= OVERRIDE_ID) {
+      const domain = this.config.disabledSites[ruleId - OVERRIDE_ID];
+      return domain === undefined ? null : {
+        action: 'allowAllRequests', source: 'Site exception',
+        condition: describeCondition({ requestDomains: [domain], resourceTypes: ['main_frame' as chrome.declarativeNetRequest.ResourceType] }, 100)
+      };
+    }
+    const subscriptions = this.config.subscriptions;
+    const subscriptionCount = subscriptions?.compiled.networkRules.length ?? 0;
+    const subscription = ruleId <= subscriptionCount;
+    const rule = subscription
+      ? subscriptions!.compiled.networkRules[ruleId - 1]
+      : this.config.compiled.networkRules[ruleId - subscriptionCount - 1];
+    if (!rule) return null;
+    const source = subscription
+      ? `${subscriptions!.manifest.lists.map(list => list.title).join(' + ')} subscriptions`
+      : `Local list: ${this.config.source}`;
+    return {
+      action: rule.action.type,
+      source: boundedText(source, 200),
+      condition: describeCondition(rule.condition as BrowserRule['condition'], subscription ? rule.priority : rule.action.type === 'block' ? 3 : 4)
+    };
   }
   snapshot(): Promise<Config> { return this.serial(async () => structuredClone(this.config)); }
   view(): Promise<ConfigView> { return this.serial(async () => configView(this.config)); }

@@ -1,4 +1,22 @@
-# Verification — subscription milestone 0.2.0
+# Verification
+
+## Activity milestone — extension 0.3.0 / companion 0.2.0
+
+The activity update adds Chrome's native page network-block total and a separate 300-entry session-only sample of matched network rules. TypeScript checking and all **58 extension tests** pass; the **8 installer/native integration tests** also pass against the unchanged companion. The 55 Rust tests passed at the previous milestone; no Rust source or native protocol changed in this update.
+
+New tests cover bounded capture and restoration, URL redaction before storage, duplicate events, clear during an in-flight storage write, failed storage, tab cleanup, native-counter action/placeholder guards, trusted read/clear routes, installed-rule ID composition, metadata during commits/rollback, safe UI rendering, unavailable versus zero totals, and stale UI responses.
+
+The optional `tests/activity-browser.mjs` regression **passed in isolated Chrome for Testing 151 on Windows** against the final 0.3.0 bundle. It verified an exact count of one block with two log entries (block and allowance), cosmetic exclusion, redaction before session storage, denied content-script reads/clears, clear without resetting the count, navigation resets, global/site controls, tab cleanup, actual worker termination and recovery with log/count retention, and browser restart clearing activity while preserving rules. The final viewer screenshot was inspected for readable, unclipped controls and correct count/site labels.
+
+The regression uses loopback fixtures with known blocking/allowance/cosmetic rules. DNR feedback, browser counts, activity routes, session storage and viewer UI are real; only native-host fixture import/status responses are substituted with output from the actual Rust executable. Run it after the README build steps:
+
+```sh
+node tests/activity-browser.mjs
+```
+
+Detailed match events are an unpacked-extension capability. The sample is not a complete page history: it includes previous pages in the selected tab, drops older records, and can miss startup/termination events. Rule details and tab hostnames reflect the state observed when an event arrives; events delayed across updates/navigation may lack exact historical attribution. Packed/store logging behavior and installed macOS browser integration remain unverified. The native counter excludes allowances and cosmetic hiding for the currently supported action types.
+
+## Subscription milestone — 0.2.0
 
 Verified on Windows on 2026-09-21. This is an implementation checkpoint with partial EasyList/EasyPrivacy compatibility, not a completed Phase 1 exit review.
 
@@ -36,7 +54,7 @@ The subscription regression loads the full real snapshot through the options int
 
 **Browser transport limit:** these browser regressions substitute `chrome.runtime.sendNativeMessage` with responses from the real Rust compiler/snapshot. The live integration script separately uses the built NativeClient and real framed Rust processes for downloads and every page, including persistence across host processes. Automated checks do not prove installed-browser native-host discovery/launch. The user reported the earlier installation worked; version 0.2.0 should be checked in the installed browser after reloading the extension. No registration or existing browser profile was modified by these tests.
 
-**Remaining limits:** macOS behavior is untested on macOS hardware. Broad day-to-day site compatibility, interruption at every refresh stage, formal performance budgets, and release packaging remain unverified. Advanced filter syntax, activity history, block counts, and the element picker remain unfinished. A failed refresh preserves committed filtering; unsupported exceptions can deliberately reduce subscription coverage.
+**Remaining limits:** macOS browser installation/registration is untested on macOS hardware; hosted Windows and macOS CI passed the deterministic baseline checks when the repository was published. Broad day-to-day site compatibility, interruption at every refresh stage, formal performance budgets, and release packaging remain unverified. Advanced filter syntax and the element picker remain unfinished. A failed refresh preserves committed filtering; unsupported exceptions can deliberately reduce subscription coverage. Activity and page counts are covered by the newer milestone above.
 
 The Windows GNU linker emitted a nonfatal `.drectve` warning for debug/test binaries. All resulting binaries used in the tests ran successfully.
 

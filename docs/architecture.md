@@ -55,4 +55,14 @@ Before DNR changes, intended state is journaled as `pending`. DNR replacement is
 
 The official [Native Messaging documentation](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) and [declarativeNetRequest API](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest) describe the underlying framing, response limit, rule priorities, quotas, and atomic update behavior.
 
-Deferred work includes activity history and block counts, the element picker, fuller filter compatibility, SQLite if needed, Firefox, and all DNS/proxy/system-network features. `LOCAL_ONLY` remains a reserved diagnostic target; there is no native request-enforcement engine.
+## Activity and page counts
+
+Chrome owns the page total through `setExtensionActionOptions({displayActionCountAsBadgeText:true})`; the popup and viewer read `action.getBadgeText`. This counts network blocking for the current block/allow/allowAllRequests rule set; allowances are excluded. The adapter rejects unsupported action types before labeling a total as blocked requests, so future redirect/header-modification support must revisit this contract. Totals reset on committed page navigation and remain separate from retained diagnostic rows and cosmetic selectors.
+
+Unpacked-only `onRuleMatchedDebug` events feed a 300-entry session log. The controller synchronously resolves each installed rule ID to bounded compiled conditions and a local-list, combined-subscription-set, or site-exception label. It reports unavailable metadata during startup, rule mutations and rollback, and after failed recovery. Entries retain captured descriptions instead of reinterpreting reused rule IDs later. Network compilation currently loses exact source-line provenance through deduplication/packing; the viewer does not attribute a combined subscription rule to an individual list.
+
+Debug events carry no rule-generation timestamp. Rule details and the tab hostname describe the state known when the event arrives; delayed events around a rule replacement or navigation may lack exact historical attribution. This diagnostic limitation does not affect Chrome's separate native page total.
+
+Request credentials/query/fragment are removed before memory/storage. Writes are batched and serialized, and storage failure is surfaced separately from filtering. Only the extension's allowlisted top-level interfaces can read or clear activity. Content scripts cannot access the session store. Current-tab views retain earlier pages within that tab; the log is explicitly a recent sample rather than an exact page history. See [privacy details](privacy-model.md).
+
+Deferred work includes the element picker, fuller filter compatibility, SQLite if needed, Firefox, and all DNS/proxy/system-network features. `LOCAL_ONLY` remains a reserved diagnostic target; there is no native request-enforcement engine.

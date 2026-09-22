@@ -2,9 +2,10 @@ import { hostname } from '../shared/types';
 import type { Controller } from './controller';
 import { configView } from './controller';
 import { validateSubscriptionIds } from '../shared/native-client';
+import type { ActivityAccess } from '../shared/activity';
 
 export interface Sender { id?: string; url?: string; tab?: { id?: number }; frameId?: number }
-export function createRouter(controller: Controller, extensionId: string, extensionURL: string) {
+export function createRouter(controller: Controller, extensionId: string, extensionURL: string, activity?: ActivityAccess) {
   return async (message: unknown, sender: Sender): Promise<unknown> => {
     if (sender.id !== extensionId || !message || typeof message !== 'object') throw new Error('Unauthorized message.');
     const input = message as Record<string, unknown>;
@@ -13,12 +14,23 @@ export function createRouter(controller: Controller, extensionId: string, extens
       if (!sender.tab || sender.frameId !== 0 || !host) throw new Error('Cosmetic configuration is only available to an HTTP(S) top frame.');
       return controller.cosmetics(host);
     }
-    const trustedPage = !sender.tab && [new URL('popup.html', extensionURL).href, new URL('options.html', extensionURL).href].includes(sender.url ?? '');
+    let page = '';
+    try { const url = new URL(sender.url ?? ''); url.hash = ''; page = url.href; } catch { /* Invalid senders remain untrusted. */ }
+    const interfacePages = ['popup.html', 'options.html', 'activity.html'].map(name => new URL(name, extensionURL).href);
+    const trustedPage = !sender.tab && interfacePages.includes(page);
     // Options opened in a tab legitimately have sender.tab; trust the precise
     // packaged URL, extension ID, and top frame, never a web-provided origin.
-    const trustedTab = sender.frameId === 0 && [new URL('options.html', extensionURL).href].includes(sender.url ?? '');
+    const trustedTab = sender.frameId === 0 && ['options.html', 'activity.html'].map(name => new URL(name, extensionURL).href).includes(page);
     if (!trustedPage && !trustedTab) throw new Error('This operation is only available from the extension interface.');
     switch (input.type) {
+      case 'activity.get':
+        if (input.tabId !== null && (!Number.isSafeInteger(input.tabId) || (input.tabId as number) < 0 || (input.tabId as number) > 2_147_483_647)) throw new Error('Invalid activity tab.');
+        if (!activity) throw new Error('Activity is unavailable.');
+        return activity.get(input.tabId as number | null);
+      case 'activity.clear':
+        if (!activity) throw new Error('Activity is unavailable.');
+        await activity.clear();
+        return null;
       case 'config.get': return controller.view();
       case 'subscriptions.progress': return controller.subscriptionProgress();
       case 'subscriptions.refresh': return configView(await controller.refreshSubscriptions(validateSubscriptionIds(input.ids)));
