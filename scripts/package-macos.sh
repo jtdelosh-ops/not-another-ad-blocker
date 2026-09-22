@@ -40,7 +40,7 @@ cp docs/macos-testing.md "$package_directory/README.md"
 chmod 755 "$package_directory/Install.command" "$package_directory/companion/naab-companion"
 
 # This is a local preview signature, not Developer ID signing or notarization.
-lipo -verify_arch x86_64 "$package_directory/companion/naab-companion"
+/usr/bin/lipo "$package_directory/companion/naab-companion" -verify_arch x86_64
 codesign --force --sign - --timestamp=none "$package_directory/companion/naab-companion"
 codesign --verify --strict --verbose=2 "$package_directory/companion/naab-companion"
 
@@ -59,7 +59,7 @@ import { nativeTransport } from './tests/native-transport.mjs';
 const root = process.env.NAAB_PACKAGE_DIRECTORY;
 const command = (program, args) => execFileSync(program, args, { encoding: 'utf8' }).trim();
 const binary = join(root, 'companion/naab-companion');
-const architectures = command('/usr/bin/lipo', ['-archs', binary]);
+const architectures = command('/usr/bin/lipo', [binary, '-archs']);
 if (architectures !== 'x86_64') throw new Error(`Expected an Intel-only executable, got: ${architectures}`);
 const loadCommands = command('/usr/bin/otool', ['-l', binary]);
 const macOSBuildCommands = loadCommands.split(/(?=Load command \d+\s*\n)/).filter(block => /^\s*cmd LC_(?:BUILD_VERSION|VERSION_MIN_MACOSX)\s*$/m.test(block));
