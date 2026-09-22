@@ -1,6 +1,14 @@
-# Privacy model — extension 0.4.0 / companion 0.2.1
+# Privacy model — extension 0.4.1 / companion 0.2.1
 
-NAAB has no account, telemetry, cloud filtering service, or browsing log retained across browser sessions. Filtering decisions and the bounded activity sample stay in the browser. The companion runs as the current user when the browser launches it through Native Messaging, opens no listening socket, and exits when stdin closes.
+NAAB has no account, telemetry or cloud filtering service. Browser filtering decisions and the bounded browser activity sample stay in the browser. The native host runs as the current user when the browser launches it through Native Messaging, opens no listening socket, and exits when stdin closes. The optional DNS development executable has the separate behavior described below.
+
+## Optional DNS development process
+
+`naab-dns-dev` opens loopback UDP/TCP sockets only when explicitly started. It reads the selected local configuration/filter files and forwards allowed DNS questions to the configured upstream IP addresses without encryption. Those upstreams can observe query names and connection metadata. Blocked queries are answered locally. The example configuration explicitly uses Cloudflare; no automatic system-resolver discovery occurs.
+
+The DNS cache and recent activity stay in process memory. The default sample holds 300 queries; `activityCapacity: 0` disables retention of query details. `status` prints aggregate counters; `activity` explicitly prints recent names, record types, outcomes and matched rule/source. `clear` erases recent details. Stopping the process erases the sample and cache, and there is no automatic disk log or upload. Redirecting terminal output can create a user-managed file. Unlike the browser sample, DNS activity does not identify tabs or incognito state: any client targeting this development port participates under the same policy.
+
+The process changes no system DNS settings and installs no service or certificates. The extension neither starts it nor receives its activity yet. See [DNS core details](dns-core.md).
 
 ## What leaves the machine
 

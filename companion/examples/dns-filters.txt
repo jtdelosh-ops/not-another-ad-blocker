@@ -1,0 +1,7 @@
+[Adblock Plus 2.0]
+! Sample rules for the opt-in DNS development resolver.
+||ads.example.test^
+@@||exception.ads.example.test^
+! Context-dependent rules are reported, never broadened into DNS blocks.
+||context.example.test^$third-party
+||path.example.test/banner

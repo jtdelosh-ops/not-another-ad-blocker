@@ -1,4 +1,4 @@
-# Architecture — extension 0.4.0 / companion 0.2.1
+# Architecture — extension 0.4.1 / companion 0.2.1
 
 The browser enforces filtering. The Rust companion compiles local filter text and downloads, compiles, and caches the fixed EasyList/EasyPrivacy subscriptions. Native Messaging starts the companion on demand; each `sendNativeMessage` request may run in a new process. Subscription snapshots therefore persist on disk. The browser retains its own committed compiled rules and settings, so ongoing filtering does not depend on the companion or network being available.
 
@@ -61,7 +61,7 @@ Configuration version 1 remains readable. An optional subscription state is stor
 
 The browser validates every snapshot page, identity, total, schema, and traversal before installation. Controller mutations are serialized. Refresh does download/validation work outside the mutation queue, then commits against current settings so concurrent site/global/local changes are preserved. A subscription generation guard prevents a removed subscription from reappearing when an older refresh finishes.
 
-Before DNR changes, intended state is journaled as `pending`. DNR replacement is atomic, but extension storage is a separate system. If committing storage fails, previous DNR rules are restored; rollback failure enters an explicit recovery-required state. On service-worker startup, committed storage is reconciled with DNR and uncommitted pending state is discarded. `unlimitedStorage` supports both the current large snapshot and its pending journal.
+Before DNR changes, intended state is journaled as `pending`. DNR replacement is atomic, but extension storage is a separate system. If committing storage fails, previous DNR rules are restored; rollback failure enters an explicit recovery-required state. A successful commit stores an SHA-256 rule stamp with its configuration. Because Chrome retains dynamic rules while an MV3 worker sleeps, a normal worker wake trusts a matching stamp and avoids replacing the full rule set. Pending, missing, or mismatched stamps force reconciliation before the state becomes trusted; uncommitted pending state is then discarded. `unlimitedStorage` supports the current large snapshot and its pending journal.
 
 The official [Native Messaging documentation](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging) and [declarativeNetRequest API](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest) describe the underlying framing, response limit, rule priorities, quotas, and atomic update behavior.
 
@@ -75,4 +75,8 @@ Debug events carry no rule-generation timestamp. Rule details and the tab hostna
 
 Request credentials/query/fragment are removed before memory/storage. Writes are batched and serialized, and storage failure is surfaced separately from filtering. Only the extension's allowlisted top-level interfaces can read or clear activity. Content scripts cannot access the session store. Current-tab views retain earlier pages within that tab; the log is explicitly a recent sample rather than an exact page history. See [privacy details](privacy-model.md).
 
-Deferred work includes advanced selector generation and network correlation, fuller filter compatibility, SQLite if needed, Firefox, and all DNS/proxy/system-network features. `LOCAL_ONLY` remains a reserved diagnostic target; there is no native request-enforcement engine.
+## DNS development core
+
+`companion/src/dns` supplies a separate, opt-in `naab-dns-dev` executable. Its foreground lifecycle is independent of the browser's short-lived Native Messaging process. Configuration selects explicit upstreams and local filter files; the development listener accepts queries only on a loopback high port. Hickory parses/serializes messages, bounded Tokio tasks handle UDP/TCP, and the in-memory cache ages TTLs. DNS policy shares the existing normalized rule parser, with conservative exception handling and separate user overrides. A bounded local diagnostic sample identifies the DNS layer, outcome and rule/source.
+
+See the [DNS core guide](dns-core.md) for its contract and limits. No DNS commands are added to Native Messaging yet, and the extension's activity viewer does not show this separate process's sample. System configuration, privilege helpers, watchdog recovery and DNS packaging remain unfinished. Advanced selector generation, fuller filter compatibility, SQLite if needed, Firefox and proxy features also remain deferred. `LOCAL_ONLY` remains a reserved browser diagnostic target.

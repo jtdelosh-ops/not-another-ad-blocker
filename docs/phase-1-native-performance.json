@@ -1,0 +1,21 @@
+{
+  "date": "2026-09-22",
+  "sourceCommit": "0260a96a3be1f297aec5ed48646fb5838e1de2c6",
+  "companionVersion": "0.2.1",
+  "method": "Release compile_subscriptions example; wall time includes process launch, both file reads, parsing, compilation, JSON serialization, and output write. Memory sampled approximately every 5 ms; sampled peaks are lower bounds, not guaranteed OS peak measurements. No downloads or cache paging. Initial browser performance run overlapped some samples; results are approximate developer baselines.",
+  "sources": [
+    { "file": "easylist.txt", "bytes": 2181867, "sha256": "0a8add823c11a4471764a8dc4bf5e0a062e199c3ff8e705e485868989b0d43c8" },
+    { "file": "easyprivacy.txt", "bytes": 1504635, "sha256": "28eec9a1637d63ba4ecedff6aba0b9648f83e0b5552be35a9ffcc9e3f9a8979a" }
+  ],
+  "samples": [
+    { "elapsedMs": 2512.55, "sampledPeakPrivateMiB": 348.03, "sampledPeakWorkingSetMiB": 340.55 },
+    { "elapsedMs": 2482.22, "sampledPeakPrivateMiB": 348.06, "sampledPeakWorkingSetMiB": 340.36 },
+    { "elapsedMs": 2340.87, "sampledPeakPrivateMiB": 348.14, "sampledPeakWorkingSetMiB": 340.44 },
+    { "elapsedMs": 2339.98, "sampledPeakPrivateMiB": 348.06, "sampledPeakWorkingSetMiB": 340.37 },
+    { "elapsedMs": 2314.13, "sampledPeakPrivateMiB": 348.07, "sampledPeakWorkingSetMiB": 340.35 },
+    { "elapsedMs": 2325.47, "sampledPeakPrivateMiB": 348.06, "sampledPeakWorkingSetMiB": 340.35 },
+    { "elapsedMs": 2571.12, "sampledPeakPrivateMiB": 348.06, "sampledPeakWorkingSetMiB": 340.34 }
+  ],
+  "compiledCounts": { "network": 12820, "cosmetic": 7562, "unsupported": 7205 },
+  "limits": "Parser and compiler are integrated; no independently instrumented parse-only or compile-only duration. Offline example shares the production compiler, but does not measure full native refresh peak memory. Cached sources differ slightly from the 12822-rule browser snapshot."
+}

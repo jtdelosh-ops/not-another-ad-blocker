@@ -9,7 +9,7 @@ For a first installation, start with [Build and install from source](#build-and-
 If you already loaded the extension and registered the companion at this repository's release-binary path:
 
 1. Build or replace both the extension and companion at their existing paths. For the downloaded Mac package, follow [Upgrade an existing Mac preview](macos-testing.md#upgrade-an-existing-mac-preview).
-2. Open `chrome://extensions` (or `edge://extensions`), click the existing extension's **Reload** button, and confirm version **0.4.0**. Accept a permission prompt if upgrading from a version before 0.3.0, which added `declarativeNetRequestFeedback` for network counts and local debug activity.
+2. Open `chrome://extensions` (or `edge://extensions`), click the existing extension's **Reload** button, and confirm version **0.4.1**. Accept a permission prompt if upgrading from a version before 0.3.0, which added `declarativeNetRequestFeedback` for network counts and local debug activity.
 3. Open **Lists & diagnostics**, click **Check companion**, and confirm **0.2.1** before compiling the new cosmetic syntax.
 4. Reload an HTTP(S) page and open the NAAB popup. Its network block count and **Recent activity** remain separate from cosmetic hiding. Clearing the activity sample does not reset the browser's page counter.
 

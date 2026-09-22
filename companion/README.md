@@ -1,8 +1,10 @@
-# Rust companion — 0.2.0
+# Rust companion
 
 `naab-companion` is an on-demand Native Messaging host. Protocol version 1 supports `status.get`, the original bounded `rules.compile`, and the new `lists.refresh`/`lists.page` operations. See the [protocol overview](../shared/protocol/README.md) and [subscription contract](../shared/protocol/subscriptions.md).
 
-The companion compiles filters, downloads only the fixed EasyList/EasyPrivacy sources when asked, and keeps subscription snapshots in a dedicated user-local cache. It has no network listener, background service, browsing-history log, telemetry, DNS/proxy integration, or request-enforcement engine. The extension enforces compiled rules and keeps working from committed browser state if the companion is unavailable.
+The native host compiles filters, downloads only the fixed EasyList/EasyPrivacy sources when asked, and keeps subscription snapshots in a dedicated user-local cache. It has no network listener or background service. The extension enforces compiled rules and keeps working from committed browser state if the companion is unavailable.
+
+The separate, opt-in `naab-dns-dev` executable is the first Phase 2 source milestone. It provides a loopback DNS development listener, forwarding, bounded caching, domain rules and local diagnostics. It is not launched by Native Messaging and does not change system DNS settings. See the [DNS core guide](../docs/dns-core.md) for commands, compatibility limits and privacy behavior.
 
 Build and verify from this directory with stable Rust:
 

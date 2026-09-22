@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Not Another Ad Blocker — Local Preview",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A local-first filtering prototype with a Rust native companion and explicit rule diagnostics.",
   "minimum_chrome_version": "121",
   "permissions": ["storage", "unlimitedStorage", "nativeMessaging", "declarativeNetRequest", "declarativeNetRequestFeedback", "activeTab"],

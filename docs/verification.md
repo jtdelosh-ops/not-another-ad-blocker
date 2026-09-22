@@ -1,12 +1,24 @@
 # Verification
 
+## Phase 2 DNS core — 2026-09-22
+
+The opt-in [DNS development executable](dns-core.md) is implemented locally with no system-setting changes. Rust formatting and all **87 Rust tests** pass (75 library, 3 DNS CLI, 6 DNS socket integration, 3 native-host process), as do the **8 existing installer/native-client tests**. The 31 new Rust tests cover normalization, rule/exception precedence, unsupported context and preprocessing safety, bounded reports, TTL/negative-cache expiry, packet/cache bounds, real UDP/TCP fallback, upstream failures, invalid messages, concurrency, command-line lifecycle and shutdown. The browser extension source did not change during this milestone; its earlier 71-test result is recorded below.
+
+A cached EasyList/EasyPrivacy pair produced 92,270 candidate DNS blocks and 1,174 allow guards/rules, but 25 unrepresentable exception cases triggered conservative suppression: **zero effective list blocks**. Explicit user domain blocks remain independent. Suppression reasons are separately sampled so ordinary diagnostic truncation cannot hide this limitation. No fresh list download or public DNS query was needed for these checks.
+
+An independent raw UDP probe received NXDOMAIN from the new executable. Windows `nslookup` could not connect from the automation environment over UDP or TCP, and the resolver observed no queries from that client. The cause is unconfirmed; normal-terminal client interoperability remains to be checked. The new DNS core has not been run on macOS. System DNS integration, managed lifecycle, extension controls and a new package/release were not implemented in this milestone.
+
+## Phase 1 exit review — 2026-09-22
+
+The [exit review](phase-1-exit-review.md) records the completed 0.4.1 performance follow-up. Fresh checks pass: 71 extension tests, 56 Rust tests, 8 installer/native tests, typechecking/build, and the activity, picker and full-subscription browser regressions. The user reports successful 0.4.0 picker testing on the Intel Mac and no visible ads during exploratory browsing apart from click-triggered popup ad pages. This is user-reported compatibility evidence, not a comprehensive site/platform certification. Full-list worker wake fell from a matched 1,689 ms median to 567 ms; DNS implementation had not started at that checkpoint.
+
 ## Picker milestone — extension 0.4.0 / companion 0.2.1
 
 The basic picker adds hover selection, supported site-scoped selectors, an all-match preview, cancel, append-only save, and immediate undo. TypeScript checking and **67 extension tests** pass, including permission grants, cross-tab/frame/host denial, expiration, worker recreation, failed compilation, local edits, subscription preservation, and pause handling. The **8 installer/native integration tests** pass with the unchanged companion.
 
 `tests/picker-browser.mjs` passes in isolated Chromium on Windows using a loopback fixture and the real Rust compiler through a test-only local transport bridge. It checks trusted selection, prevention of page capture actions/link navigation and frame activation, keyboard preview, cancel cleanup, scoped saves/reloads, undo after another local edit, matching multiple elements, parent selection, native failure retention, and site/global controls. Existing cosmetic-child browser checks also pass. Preview and saved-state screenshots were inspected for readable controls. No existing browser profile or live advertising site is used.
 
-Run `node tests/picker-browser.mjs` with the same `NAAB_PLAYWRIGHT`, `NAAB_CHROMIUM`, and optional `NAAB_BINARY` configuration described below, after building the extension and companion. This does not prove Chrome native-host discovery on a user's machine. The earlier 0.3.1 preview was installed and tested by the user on Intel macOS Ventura 13.3.1; hands-on Mac testing of the new picker remains pending. The Phase 1 exit review, broad site compatibility, and performance budgets remain unfinished.
+Run `node tests/picker-browser.mjs` with the same `NAAB_PLAYWRIGHT`, `NAAB_CHROMIUM`, and optional `NAAB_BINARY` configuration described below, after building the extension and companion. This does not prove Chrome native-host discovery on a user's machine. The earlier 0.3.1 preview was installed and tested by the user on Intel macOS Ventura 13.3.1; the user has since reported successful 0.4.0 picker testing on that Mac. The exit review above supersedes the milestone's earlier pending-review status; broad platform coverage and explicit performance budgets remain limited.
 
 Older milestone reports below describe their verification scope at the time; their platform and feature limitations are superseded where noted above.
 

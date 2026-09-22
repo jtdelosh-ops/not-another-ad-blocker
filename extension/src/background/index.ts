@@ -2,7 +2,7 @@ import { Controller, type Backend } from './controller';
 import { createRouter } from './routes';
 import { NativeClient } from '../shared/native-client';
 import { RecoveryRequiredError, errorMessage, hostname } from '../shared/types';
-import { ActivityLog, blockedCountText, supportsBlockedCount } from './activity';
+import { ActivityLog, blockedCountText } from './activity';
 import { ACTIVITY_LIMIT, type ActivityAccess } from '../shared/activity';
 import { Picker, type PickerGrant } from './picker';
 
@@ -38,16 +38,14 @@ const tabsReady = chrome.tabs.query({}).then(async tabs => {
   await activityLog.retainTabs(new Set(knownTabs.keys()));
 }).finally(() => { initializingTabs = false; tabsTouchedDuringStartup.clear(); });
 void tabsReady.catch(() => {});
-let blockCounterSafe = false;
 const counterReady = chrome.declarativeNetRequest.setExtensionActionOptions({ displayActionCountAsBadgeText: true }).then(() => true, () => false);
 const backend: Backend = {
-  async read() { await storageReady; return chrome.storage.local.get(['config', 'pending']); },
+  async read() { await storageReady; return chrome.storage.local.get(['config', 'pending', 'appliedRuleStamp']); },
   async write(values) { await chrome.storage.local.set(values); },
   async remove(key) { await chrome.storage.local.remove(key); },
   rules: () => chrome.declarativeNetRequest.getDynamicRules(),
   async replace(removeRuleIds, addRules) {
     await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
-    blockCounterSafe = supportsBlockedCount(addRules);
   },
   maxDynamicRules: (chrome.declarativeNetRequest as typeof chrome.declarativeNetRequest & { MAX_NUMBER_OF_DYNAMIC_RULES?: number }).MAX_NUMBER_OF_DYNAMIC_RULES ?? 5_000,
   async notify() {
@@ -79,7 +77,7 @@ const activity: ActivityAccess = {
         const tab = await chrome.tabs.get(tabId);
         rememberTab(tab);
         if (!tab.incognito) site = hostname(tab.url);
-        if (site && blockCounterSafe && await counterReady) blockedCount = blockedCountText(await chrome.action.getBadgeText({ tabId }));
+        if (site && await controller.pageCountSafe() && await counterReady) blockedCount = blockedCountText(await chrome.action.getBadgeText({ tabId }));
       } catch { knownTabs.delete(tabId); await activityLog.removeTab(tabId); }
     }
     return {

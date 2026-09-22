@@ -5,7 +5,7 @@ import { MAX_SELECTORS, MAX_SUBSCRIPTION_NETWORK, MAX_TEXT_BYTES, OVERRIDE_ID, R
 
 export type BrowserRule = chrome.declarativeNetRequest.Rule;
 export interface Backend {
-  read(): Promise<{ config?: unknown; pending?: unknown }>;
+  read(): Promise<{ config?: unknown; pending?: unknown; appliedRuleStamp?: unknown }>;
   write(values: Record<string, unknown>): Promise<void>;
   remove(key: string): Promise<void>;
   rules(): Promise<BrowserRule[]>;
@@ -28,12 +28,36 @@ export function configView(config: Config): ConfigView {
 export function desiredRules(config: Config): BrowserRule[] {
   if (!config.enabled) return [];
   // Stable array order gives globally unique IDs even when each compiler starts at 1.
-  const rules = [...(config.subscriptions?.compiled.networkRules ?? []).map(rule => structuredClone(rule)), ...config.compiled.networkRules.map(rule => ({ ...structuredClone(rule), priority: rule.action.type === 'block' ? 3 : 4 }))].map((rule, index) => ({ ...rule, id: index + 1 })) as BrowserRule[];
+  const rules: BrowserRule[] = [];
+  for (const rule of config.subscriptions?.compiled.networkRules ?? []) {
+    rules.push({ id: rules.length + 1, priority: rule.priority, action: rule.action, condition: rule.condition } as BrowserRule);
+  }
+  for (const rule of config.compiled.networkRules) {
+    rules.push({ id: rules.length + 1, priority: rule.action.type === 'block' ? 3 : 4, action: rule.action, condition: rule.condition } as BrowserRule);
+  }
   config.disabledSites.forEach((domain, index) => {
     // Main-frame allowance propagates to descendant frames after navigation.
     rules.push({ id: OVERRIDE_ID + index, priority: 100, action: { type: 'allowAllRequests' as chrome.declarativeNetRequest.RuleActionType }, condition: { requestDomains: [domain], resourceTypes: ['main_frame' as chrome.declarativeNetRequest.ResourceType] } });
   });
   return rules;
+}
+export async function ruleStamp(config: Config): Promise<string> {
+  const input = JSON.stringify({
+    version: config.version,
+    enabled: config.enabled,
+    disabledSites: config.disabledSites,
+    source: config.source,
+    text: config.text,
+    updatedAt: config.updatedAt,
+    localNetworkCount: config.compiled.networkRules.length,
+    subscription: config.subscriptions === undefined ? null : {
+      snapshotId: config.subscriptions.manifest.snapshotId,
+      appliedAt: config.subscriptions.appliedAt,
+      networkCount: config.subscriptions.compiled.networkRules.length
+    }
+  });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 function boundedText(value: string, limit: number): string {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
@@ -55,6 +79,7 @@ export class Controller {
   private readonly ready: Promise<void>;
   private recoveryError: Error | undefined;
   private activityRulesReady = false;
+  private hasCommittedConfig = false;
   private refreshing = false;
   private subscriptionGeneration = 0;
   private progress: SubscriptionProgress = { phase: 'idle' };
@@ -66,10 +91,12 @@ export class Controller {
   private async initialize(): Promise<void> {
     const stored = await this.backend.read();
     this.config = stored.config === undefined ? emptyConfig() : validateConfig(stored.config);
-    // Always reconcile committed storage with DNR after service-worker restart.
-    // If termination interrupted a write, uncommitted pending state is discarded.
-    await this.applyRules(desiredRules(this.config));
+    const stamp = await ruleStamp(this.config);
+    const needsReconciliation = stored.pending !== undefined || (stored.config !== undefined && stored.appliedRuleStamp !== stamp);
+    if (needsReconciliation) await this.applyRules(desiredRules(this.config));
     if (stored.pending !== undefined) await this.backend.remove('pending');
+    if (needsReconciliation && stored.config !== undefined) await this.backend.write({ appliedRuleStamp: stamp });
+    this.hasCommittedConfig = stored.config !== undefined;
     this.activityRulesReady = true;
   }
   private serial<T>(action: () => Promise<T>): Promise<T> {
@@ -84,7 +111,8 @@ export class Controller {
     await this.backend.replace(old.map(rule => rule.id), rules);
   }
   private async commit(next: Config): Promise<Config> {
-    const previous = structuredClone(this.config);
+    const previous = this.config;
+    const stamp = await ruleStamp(next);
     // IDs are reused when lists change. Never attribute an event against the
     // old config while Chrome and committed storage are being reconciled.
     this.activityRulesReady = false;
@@ -95,7 +123,7 @@ export class Controller {
         await this.backend.remove('pending').catch(() => {});
         throw new Error(`Browser rule update failed: ${errorMessage(error)}`);
       }
-      try { await this.backend.write({ config: next }); }
+      try { await this.backend.write({ config: next, appliedRuleStamp: stamp }); }
       catch (error) {
         try {
           await this.applyRules(desiredRules(previous));
@@ -107,6 +135,7 @@ export class Controller {
         throw new Error(`Settings could not be saved; previous rules restored. ${errorMessage(error)}`);
       }
       this.config = next;
+      this.hasCommittedConfig = true;
       await this.backend.remove('pending').catch(() => {});
       await this.backend.notify().catch(() => {});
       return structuredClone(this.config);
@@ -140,6 +169,18 @@ export class Controller {
       source: boundedText(source, 200),
       condition: describeCondition(rule.condition as BrowserRule['condition'], subscription ? rule.priority : rule.action.type === 'block' ? 3 : 4)
     };
+  }
+  pageCountSafe(): Promise<boolean> {
+    return this.serial(async () => {
+      if (!this.activityRulesReady || !this.hasCommittedConfig) return false;
+      for (const rule of this.config.subscriptions?.compiled.networkRules ?? []) {
+        if (!['block', 'allow', 'allowAllRequests'].includes(rule.action.type)) return false;
+      }
+      for (const rule of this.config.compiled.networkRules) {
+        if (!['block', 'allow'].includes(rule.action.type)) return false;
+      }
+      return true;
+    });
   }
   snapshot(): Promise<Config> { return this.serial(async () => structuredClone(this.config)); }
   view(): Promise<ConfigView> { return this.serial(async () => configView(this.config)); }

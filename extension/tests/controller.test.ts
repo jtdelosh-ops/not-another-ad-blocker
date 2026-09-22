@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Controller, desiredRules, type Backend, type BrowserRule } from '../src/background/controller';
+import { Controller, desiredRules, ruleStamp, type Backend, type BrowserRule } from '../src/background/controller';
 import { createRouter } from '../src/background/routes';
 import { NativeClient } from '../src/shared/native-client';
 import { emptyConfig, OVERRIDE_ID, RESOURCE_TYPES, SUBSCRIPTION_URLS, type Compilation } from '../src/shared/types';
@@ -76,6 +76,46 @@ test('worker restart discards interrupted pending update and restores committed 
   assert.deepEqual(await controller.snapshot(), old);
   assert.deepEqual(backend.active, desiredRules(old));
   assert.equal(backend.stored.pending, undefined);
+});
+test('worker restart clears uncommitted first-import rules when no config exists', async () => {
+  const backend = new FakeBackend();
+  const next = { ...emptyConfig(), compiled: compiled() };
+  backend.stored = { pending: next };
+  backend.active = desiredRules(next);
+  const { controller } = setup(backend);
+  assert.deepEqual(await controller.snapshot(), emptyConfig());
+  assert.deepEqual(backend.active, []);
+  assert.equal(backend.stored.pending, undefined);
+  assert.equal(backend.stored.appliedRuleStamp, undefined);
+});
+test('normal worker restart preserves committed DNR rules without replacing them', async () => {
+  const backend = new FakeBackend();
+  const first = setup(backend).controller;
+  await first.import('old', 'Test');
+  const updates = backend.updates;
+  const restarted = setup(backend).controller;
+  assert.deepEqual(await restarted.snapshot(), await first.snapshot());
+  assert.equal(backend.updates, updates);
+  assert.equal(backend.stored.appliedRuleStamp, await ruleStamp(await restarted.snapshot()));
+  assert.equal(await restarted.pageCountSafe(), true);
+});
+test('missing or mismatched rule stamp reconciles stored configuration before becoming trusted', async () => {
+  const backend = new FakeBackend();
+  const config = { ...emptyConfig(), compiled: compiled() };
+  backend.stored = { config, appliedRuleStamp: '0'.repeat(64) };
+  const { controller } = setup(backend);
+  assert.deepEqual(await controller.snapshot(), config);
+  assert.deepEqual(backend.active, desiredRules(config));
+  assert.equal(backend.updates, 1);
+  assert.equal(backend.stored.appliedRuleStamp, await ruleStamp(config));
+});
+test('page counter is unavailable before a config commits and remains available while protection is paused', async () => {
+  const { controller } = setup();
+  assert.equal(await controller.pageCountSafe(), false);
+  await controller.import('old', 'Test');
+  assert.equal(await controller.pageCountSafe(), true);
+  await controller.setEnabled(false);
+  assert.equal(await controller.pageCountSafe(), true);
 });
 test('failed rollback stops reporting a protection state until extension restart recovers it', async () => {
   const { controller, backend } = setup();

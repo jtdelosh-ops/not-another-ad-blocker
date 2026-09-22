@@ -4,7 +4,7 @@
 
 The goal is filtering you can understand and control: choose your lists, add your own rules, pause protection for a site, and see which rules the software can actually support. Rule compilation and browser filtering happen locally, without an account or a cloud filtering service.
 
-**Status: early developer preview.** NAAB is usable for testing, but filter compatibility is incomplete and Phase 1 is still in progress. A fresh installation needs a filter-list download or a local rule import before it blocks anything.
+**Status: early developer preview.** Phase 1 is complete for the preview, but filter compatibility is incomplete. A fresh installation needs a filter-list download or a local rule import before it blocks anything.
 
 [Get started](docs/getting-started.md) · [Roadmap](docs/roadmap.md) · [Architecture](docs/architecture.md) · [Privacy model](docs/privacy-model.md)
 
@@ -30,7 +30,7 @@ NAAB has two parts with different jobs:
 | **Browser extension — TypeScript / Manifest V3** | Applies network rules, hides matching elements, and provides settings and diagnostics. |
 | **Local companion — Rust** | Downloads selected lists, validates and compiles filters, and caches list data locally. |
 
-The two communicate through the browser's Native Messaging interface. The companion runs on demand; it is not an always-running service. Chrome or Edge performs the actual filtering under its existing API limits. The current build does not route browsing traffic through the companion, change DNS or proxy settings, or install certificates.
+The two communicate through the browser's Native Messaging interface. The native host runs on demand. Chrome or Edge performs browser filtering under its existing API limits. An optional, source-only [DNS development core](docs/dns-core.md) now runs separately for explicit local DNS queries. It does not change system DNS or proxy settings, install a service, or install certificates.
 
 Cosmetic hiding and network blocking are different: hiding an element removes it from view but does not necessarily prevent its content from downloading.
 
@@ -44,17 +44,18 @@ See the [privacy model](docs/privacy-model.md) for storage locations and the bou
 
 ## Where the project stands
 
-This branch contains extension **0.4.0** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged Chrome build. The earlier 0.3.1 preview was tested on an Intel Mac running Ventura 13.3.1; the new picker's hands-on Mac check and broader platform testing remain in progress.
+This branch contains extension **0.4.1** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged 0.4.0 Chrome build. The user reports successful 0.4.0 picker testing on an Intel Mac running Ventura 13.3.1; broader platform coverage remains limited.
 
 Current limits include:
 
 - Partial EasyList/EasyPrivacy compatibility; a downloaded line is not necessarily an active rule.
 - Manual list refreshes and cosmetic filtering limited to the top-level page, outside embedded frames.
 - No dedicated, reliable YouTube video-ad blocking.
+- Click-triggered popup ad tabs can still open; top-level page navigations are not blocked.
 - The basic picker uses supported class/ID selectors in the top document; changing class names can make a saved rule stop matching.
 - Chromium browsers only; Firefox, Safari, and system-wide filtering are not implemented.
 
-The next Phase 1 work is broader compatibility and performance testing and an exit review. The longer-term vision is a local browser privacy firewall with additional enforcement options. DNS filtering and possible proxy capabilities belong to later roadmap phases, not the current product.
+The [Phase 1 exit review](docs/phase-1-exit-review.md) records the completed performance follow-up. Phase 2 has begun with a [local DNS core](docs/dns-core.md): explicit domain filtering, forwarding, caching and local diagnostics on a development port. System integration and usable full-list DNS compatibility remain unfinished; proxy capabilities belong to later roadmap phases.
 
 ## Try it or work on it
 

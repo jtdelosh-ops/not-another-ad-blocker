@@ -1,6 +1,8 @@
 # Not Another Ad Blocker
 ## Product & Engineering Roadmap
 
+Current checkpoint (2026-09-22): [Phase 1 is complete](phase-1-exit-review.md) for the extension 0.4.1 / companion 0.2.1 developer preview. Phase 2 has begun with an opt-in [DNS development core](dns-core.md): loopback UDP/TCP, forwarding, bounded cache, conservative domain compilation, user overrides and local diagnostics. System integration, extension DNS controls, full-list compatibility and cross-platform verification remain unfinished. The requirements below describe intended scope, not a list of completed features.
+
 **Project name:** Not Another Ad Blocker  
 **Working abbreviation:** NAAB  
 **Project type:** Local-first browser privacy and content-filtering system  

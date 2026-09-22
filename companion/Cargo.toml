@@ -3,6 +3,7 @@ name = "naab-companion"
 version = "0.2.1"
 edition = "2021"
 publish = false
+default-run = "naab-companion"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -10,6 +11,10 @@ serde_json = { version = "1.0", features = ["raw_value"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 sha2 = "0.10"
 time = { version = "0.3", features = ["formatting"] }
+hickory-proto = { version = "0.25.2", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "signal", "time", "sync", "macros"] }
+rand = "0.9"
+idna = "1"
 
 [profile.release]
 lto = true
