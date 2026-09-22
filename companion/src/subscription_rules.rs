@@ -1,6 +1,6 @@
 //! Bounded compilation of real subscriptions. Never execute list content.
 //! Unsupported exceptions weaken subscription coverage conservatively.
-use crate::rules::{valid_selector, RESOURCE_TYPES};
+use crate::rules::{canonical_selector, valid_selector, RESOURCE_TYPES};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -313,12 +313,13 @@ pub fn compile_subscriptions(
                 continue;
             }
             if let Some((scope, selector)) = raw.split_once("#@#") {
-                // An exception can only affect a supported selector if its text matches.
+                // Canonicalize supported child-check whitespace before matching.
                 if !valid_selector(selector) {
                     unsupported += 1;
                     diagnostic.add(source, line, raw, "Unsupported cosmetic exception selector");
                     continue;
                 }
+                let selector = canonical_selector(selector);
                 match scopes(scope, ',') {
                     Ok((yes, no)) if !yes.is_empty() && no.is_empty() => {
                         exception_domains
@@ -341,7 +342,7 @@ pub fn compile_subscriptions(
                     hides.push(Hide {
                         domains,
                         excluded,
-                        selector: selector.into(),
+                        selector: canonical_selector(selector),
                         source: (*source).into(),
                         raw: raw.into(),
                         line,
@@ -772,5 +773,17 @@ mod tests {
         assert_eq!(anchored_host("||safe.test"), None);
         let v = compile("##.ad\n@@||safe.test$generichide");
         assert_eq!(v["stats"]["cosmetic"], 0);
+    }
+
+    #[test]
+    fn direct_child_cosmetics_preserve_domain_exceptions() {
+        let v = compile("site.test##div:has(> .ad-label)\nsite.test##div:has(>.ad-label)\nsafe.site.test#@#div:has(>  .ad-label  )");
+        assert_eq!(v["stats"]["cosmetic"], 1);
+        assert_eq!(v["cosmeticRules"][0]["selector"], "div:has(>.ad-label)");
+        assert_eq!(v["cosmeticRules"][0]["domains"], json!(["site.test"]));
+        assert!(v["cosmeticRules"][0]["excludedDomains"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("safe.site.test")));
     }
 }

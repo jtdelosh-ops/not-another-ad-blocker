@@ -11,8 +11,8 @@ async function refresh(): Promise<void> {
     style?.remove();
     style = undefined;
     if (!selectors.length) return;
-    // Only validated compound selectors enter the stylesheet. No rule text,
-    // declarations, URLs, attributes, or scriptlets can reach this sink.
+    // Only validated compounds or single direct-child :has() selectors enter
+    // this stylesheet. No declarations, URLs, attributes or scriptlets.
     const next = document.createElement('style');
     next.textContent = [...new Set<string>(selectors)].map(selector => `${selector}{display:none!important}`).join('\n');
     (document.head ?? document.documentElement)?.append(next);

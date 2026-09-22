@@ -14,6 +14,8 @@ const state = validateSubscriptionState(JSON.parse(await readFile(process.argv[2
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NAAB_PLAYWRIGHT || 'playwright');
 const root = fileURLToPath(new URL('..', import.meta.url));
+const companionVersion = (await readFile(path.join(root, 'companion', 'Cargo.toml'), 'utf8')).match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+assert.ok(companionVersion, 'Companion package version must be declared');
 const binary = process.env.NAAB_BINARY || path.join(root, 'companion', 'target', 'debug', `naab-companion${process.platform === 'win32' ? '.exe' : ''}`);
 const client = new NativeClient(nativeTransport(binary));
 const blockedHost = '2mdn.net';
@@ -23,6 +25,7 @@ assert.ok(cosmetic, 'Snapshot must contain a site-scoped ID selector for the fix
 const localText = '||local-ads.example.test^\n##.naab-local-ad';
 const allowText = `${localText}\n@@||${blockedHost}^`;
 const payloads = { status: await client.status(), local: await client.compile(localText, 'Browser local'), allow: await client.compile(allowText, 'Browser local') };
+assert.equal(payloads.status.companionVersion, companionVersion, 'Build the current companion before running browser regressions');
 const resultDir = path.join(root, 'test-results'); await mkdir(resultDir, { recursive: true });
 const profile = await mkdtemp(path.join(resultDir, 'subscriptions-profile-'));
 const server = createServer((request, response) => {
@@ -78,7 +81,7 @@ try {
   }, { state, payloads, localText, allowText });
   let options = await context.newPage(); options.on('pageerror', error => pageErrors.push(error.message));
   await options.goto(`chrome-extension://${id}/options.html`);
-  await options.waitForFunction(() => document.querySelector('#companion').textContent.includes('0.2.0 is ready'));
+  await options.waitForFunction(version => document.querySelector('#companion').textContent.includes(`${version} is ready`), companionVersion);
   const send = message => options.evaluate(message => chrome.runtime.sendMessage(message), message);
   const config = async () => { const result = await send({ type: 'config.get' }); assert.equal(result.ok, true); return result.payload; };
   const mutate = async message => { const result = await send(message); assert.equal(result.ok, true, JSON.stringify(result)); return result.payload; };

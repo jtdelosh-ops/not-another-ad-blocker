@@ -1,6 +1,6 @@
 # Not Another Ad Blocker
 
-Extension version **0.3.0** adds page network block counts and a local activity viewer to the Chromium Manifest V3 extension. It continues to use companion **0.2.0** for manual EasyList/EasyPrivacy downloads and local compilation into browser network rules and simple cosmetic hiding. Local filters, global protection, and per-site settings remain separate and persist across updates.
+Extension **0.3.1** and companion **0.2.1** add a limited direct-child check to cosmetic filtering, so a rule can hide a container by a stable child class or ID. Page network block counts, the local activity viewer, manual EasyList/EasyPrivacy downloads, and local rule compilation remain available. Local filters, global protection, and per-site settings remain separate and persist across updates.
 
 This is an early developer build with partial subscription compatibility. The visual element picker, broader compatibility/performance validation, and the Phase 1 exit review remain unfinished. A new installation starts with zero rules until you download subscriptions or import local filters.
 
@@ -8,15 +8,16 @@ This is an early developer build with partial subscription compatibility. The vi
 
 If you already loaded the extension and registered the companion at this repository's release-binary path:
 
-1. Open `chrome://extensions` (or `edge://extensions`) and click the extension's **Reload** button. Accept an updated permission prompt if displayed: version 0.3.0 adds `declarativeNetRequestFeedback` for network counts and local debug activity.
-2. Reload an HTTP(S) page and open the NAAB popup. The page's network block count appears separately from the number of rules loaded.
-3. Click **Recent activity** for recent matched rules. Use **Refresh** to update the view or **Clear all recent activity** to erase the sample. Clearing the sample does not reset the browser's page counter.
+1. Build or replace both the extension and companion at their existing paths. For the downloaded Mac package, follow [Upgrade an existing Mac preview](docs/macos-testing.md#upgrade-an-existing-mac-preview).
+2. Open `chrome://extensions` (or `edge://extensions`), click the existing extension's **Reload** button, and confirm version **0.3.1**. Accept a permission prompt if upgrading from a version before 0.3.0, which added `declarativeNetRequestFeedback` for network counts and local debug activity.
+3. Open **Lists & diagnostics**, click **Check companion**, and confirm **0.2.1** before compiling the new cosmetic syntax.
+4. Reload an HTTP(S) page and open the NAAB popup. Its network block count and **Recent activity** remain separate from cosmetic hiding. Clearing the activity sample does not reset the browser's page counter.
 
-Existing downloaded lists and protection settings remain saved. Companion 0.2.0 remains current; no companion rebuild, list download, or registration change is needed for this activity update.
+Existing downloaded lists and protection settings remain saved. Both updated components are needed for the new cosmetic syntax; a new list download is not required to compile a local rule.
 
 The extension folder and registered executable stay at the same paths, so you do not need to copy a new extension ID or repeat registration. Registration is needed again if the extension ID or executable path changes. If the companion still reports an older version, make sure the updated release executable is at the registered path.
 
-Your earlier local test filters remain active alongside subscriptions. To remove only those tests, clear **Filter text** under **Local filter list** and click **Compile & replace local rules**. This leaves downloaded subscriptions and site settings intact.
+Your earlier local test filters remain active alongside subscriptions. Edit only the unwanted test lines under **Local filter list**, retain your other filters, then click **Compile & replace local rules**. This leaves downloaded subscriptions and site settings intact.
 
 ## Build and install from source
 
@@ -74,7 +75,7 @@ Subscription network support includes ASCII URL patterns with Adblock-style anch
 
 The browser's capacity is reserved for up to 2,000 local network rules and 200 site overrides before allocating subscription rules. Supported allow exceptions are kept before selecting blocks within the remaining budget. The UI reports unsupported lines, capacity omissions, and conservative safety omissions. Unsupported exception syntax can produce broader allowance guards or omit related blocking/hiding rules to reduce breakage; this lowers filtering coverage.
 
-Cosmetic support remains limited to compound tag/class/ID selectors, such as `.advertisement`, `div.sidebar-ad`, and `#sponsor`, with positive/negative domain scopes and supported `#@#` exceptions. Cosmetics apply only to the top document. Complex selectors, attributes, combinators, pseudo-selectors, scriptlets, and procedural rules are unsupported. If a generic-hiding exception cannot be safely scoped, generic subscription cosmetics are suppressed conservatively; your local generic cosmetic rules still work. Unsupported document/hiding exceptions can also reduce cosmetic coverage.
+Cosmetics support ASCII tag/class/ID compounds, such as `.advertisement`, `div.sidebar-ad`, and `#sponsor`, plus one direct-child check: `div:has(> .ad-label)`. The parent and child must each be compounds, the child must include a class or ID, and the whole selector is limited to 512 bytes. Nesting, attributes, other pseudo-selectors/combinators, scriptlets, and procedural rules remain unsupported. Positive/negative domain scopes and supported `#@#` exceptions apply to subscriptions. Cosmetics affect only the top document. If a generic-hiding exception cannot be safely scoped, generic subscription cosmetics are suppressed conservatively; your local generic cosmetic rules still work. Unsupported document/hiding exceptions can also reduce cosmetic coverage.
 
 There is no claim of complete EasyList, EasyPrivacy, Adblock Plus, or uBlock Origin compatibility. Refresh the lists and read the reported coverage rather than treating every downloaded line as an active rule.
 
@@ -87,10 +88,13 @@ Local imports retain their original, narrower syntax:
 ||tracker.example.test^$third-party
 @@||ads.example.test/allowed.js
 example.test##.advertisement
+example.test##div:has(> .ad-label)
 ##.naab-demo-ad
 ```
 
-A local network pattern must use a domain anchor ending in `^` or followed by a literal path; `@@` exceptions and `$third-party` are supported. Local cosmetics accept the same restricted compound selector grammar with optional positive domains. Local imports do not support the broader subscription modifiers or cosmetic exceptions. Limits remain 128 KiB UTF-8 text, 2,000 nonempty lines, and 2,048 bytes per line. Import replaces only the previous local list.
+A local network pattern must use a domain anchor ending in `^` or followed by a literal path; `@@` exceptions and `$third-party` are supported. Local cosmetics accept the same restricted compound/direct-child selector grammar with optional positive domains. Local imports do not support the broader subscription modifiers or cosmetic exceptions. Limits remain 128 KiB UTF-8 text, 2,000 nonempty lines, and 2,048 bytes per line. Import replaces only the previous local list.
+
+The manual rule for the reported rotating-class banner is `pornhub.com##div:has(> .t-j-inbanlabel-container)`. It is not installed automatically. Replace only the obsolete local test rule for that banner and retain other filters. This hides a `div` with that direct-child marker even when the parent class changes; it depends on the marker remaining present and applies only to the top document. Verification uses an isolated fixture, not the live page. The [Mac upgrade guide](docs/macos-testing.md#upgrade-an-existing-mac-preview) includes the edit steps.
 
 Local network blocks/allows use priorities 3/4, above subscription priorities 1/2. Site protection overrides use priority 100. A paused hostname also pauses its subdomains; remove a parent exception before re-enabling a child. Global-off pauses all protection. Reload pages after changing rules or site controls.
 

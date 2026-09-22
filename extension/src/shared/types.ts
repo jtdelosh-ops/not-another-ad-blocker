@@ -56,7 +56,14 @@ export function hostname(url: string | undefined): string | null {
 export function matchesDomain(host: string, domain: string): boolean { return host === domain || host.endsWith(`.${domain}`); }
 export function disabledBy(host: string, sites: string[]): string | undefined { return sites.find(site => matchesDomain(host, site)); }
 export function isSafeSelector(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 512 && /^(?:[A-Za-z][A-Za-z0-9-]*)?(?:[.#](?:-?[A-Za-z_]|--)[A-Za-z0-9_-]*)*$/.test(value);
+  if (typeof value !== 'string' || !value.length || value.length > 512) return false;
+  const compound = (text: string): boolean => text.length > 0 && /^(?:[A-Za-z][A-Za-z0-9-]*)?(?:[.#](?:-?[A-Za-z_]|--)[A-Za-z0-9_-]*)*$/.exec(text)?.[0] === text;
+  const marker = ':has(>';
+  const index = value.indexOf(marker);
+  if (index < 0) return compound(value);
+  if (!value.endsWith(')')) return false;
+  const child = value.slice(index + marker.length, -1).replace(/^ +| +$/g, '');
+  return compound(value.slice(0, index)) && /[.#]/.test(child) && compound(child);
 }
 export function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 export class RecoveryRequiredError extends Error {

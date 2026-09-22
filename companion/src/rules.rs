@@ -113,7 +113,7 @@ pub fn parse_rule(raw: &str) -> Result<NormalizedRule, &'static str> {
             return Err("Cosmetic selector exceeds the 512-byte limit; no rule was emitted");
         }
         if !valid_selector(selector) {
-            return Err("Only compound tag, class, and ID selectors are supported (no attributes, combinators, pseudo-selectors, or code)");
+            return Err("Only compound tag/class/ID selectors and one :has(> .class-or-ID) child check are supported");
         }
         let domains = if scope.is_empty() {
             vec![]
@@ -132,7 +132,7 @@ pub fn parse_rule(raw: &str) -> Result<NormalizedRule, &'static str> {
         };
         return Ok(NormalizedRule::Cosmetic {
             domains,
-            selector: selector.into(),
+            selector: canonical_selector(selector),
         });
     }
 
@@ -193,9 +193,23 @@ fn valid_literal_path(path: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"/._%~:@!&=+-".contains(&byte))
 }
 
-/// Compound selector grammar: optional ASCII tag, followed by zero or more
-/// .class/#id components; at least one component is required. No CSS escapes.
+/// Compounds, optionally followed by one direct-child :has() check. The child
+/// must have a class or ID; nesting, lists, escapes and other CSS are rejected.
 pub fn valid_selector(selector: &str) -> bool {
+    if selector.is_empty() || selector.len() > MAX_SELECTOR_BYTES {
+        return false;
+    }
+    if let Some((parent, tail)) = selector.split_once(":has(>") {
+        let Some(child) = tail.strip_suffix(')') else {
+            return false;
+        };
+        let child = child.trim_matches(' ');
+        return valid_compound(parent) && child.contains(['.', '#']) && valid_compound(child);
+    }
+    valid_compound(selector)
+}
+
+fn valid_compound(selector: &str) -> bool {
     let bytes = selector.as_bytes();
     if bytes.is_empty() || bytes.len() > MAX_SELECTOR_BYTES {
         return false;
@@ -240,6 +254,17 @@ pub fn valid_selector(selector: &str) -> bool {
         }
     }
     index == bytes.len()
+}
+
+/// Called after validation. Equivalent child-check spacing must have the same
+/// key so cosmetic exceptions and deduplication cannot disagree with CSS.
+pub fn canonical_selector(selector: &str) -> String {
+    if let Some((parent, tail)) = selector.split_once(":has(>") {
+        if let Some(child) = tail.strip_suffix(')') {
+            return format!("{parent}:has(>{})", child.trim_matches(' '));
+        }
+    }
+    selector.into()
 }
 
 fn key_for(rule: &NormalizedRule) -> String {
@@ -562,6 +587,8 @@ mod tests {
             "._private",
             ".-ad",
             ".--ad",
+            "div:has(> .t-j-inbanlabel-container)",
+            ".slot:has(>#ad-label)",
         ] {
             assert!(valid_selector(selector), "{selector}");
         }
@@ -575,6 +602,13 @@ mod tests {
             "div+.ad",
             "[id=ad]",
             "div:has(.ad)",
+            "div:has(> video)",
+            "div:has(> .ad:has(> .nested))",
+            "div:has(> .ad),body",
+            "div:has(> .ad) .child",
+            "div:has(> [data-ad])",
+            "div:has(> .ad\n)",
+            "div:has(> .ad){display:none}",
             ".ad,.banner",
             ".ad{color:red}",
             ".ad/*comment*/",

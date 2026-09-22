@@ -51,3 +51,11 @@ test('blank lines may exceed nonempty line quota without invalidating compilatio
   result.stats.ignored = MAX_TEXT_BYTES + 2;
   assert.throws(() => validateCompilation(result), /invalid response/);
 });
+
+test('direct-child hiding permits one class/ID check without CSS injection or broad video matching', () => {
+  for (const selector of ['div:has(> .t-j-inbanlabel-container)', '.slot:has(>#ad-label)']) assert.equal(isSafeSelector(selector), true, selector);
+  for (const selector of ['div:has(> video)', 'div:has(> .ad:has(> .nested))', 'div:has(> .ad),body', 'div:has(> .ad) .child', 'div:has(> [data-ad])', 'div:has(> .ad\n)', '.ad\n', 'div:has(> .ad){display:none}', 'div:has(> .ad)\n']) assert.equal(isSafeSelector(selector), false, selector);
+  const base = 'div:has(> .';
+  assert.equal(isSafeSelector(base + 'a'.repeat(512 - base.length - 1) + ')'), true);
+  assert.equal(isSafeSelector(base + 'a'.repeat(513 - base.length - 1) + ')'), false);
+});

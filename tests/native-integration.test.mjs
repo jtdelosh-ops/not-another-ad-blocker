@@ -52,6 +52,10 @@ test('oversized and truncated incoming frames fail safely', async () => {
 });
 
 test('Rust and TypeScript agree on cosmetic grammar, boundaries, and blank lines', async () => {
+  const childRules = await client.compile('pornhub.com##div:has(> .t-j-inbanlabel-container)\n##div:has(> video)\n##div:has(> .ad:has(> .nested))\n##div:has(> .ad),body');
+  assert.equal(childRules.stats.cosmetic, 1);
+  assert.equal(childRules.stats.unsupported, 3);
+  assert.equal(childRules.cosmeticRules[0].selector, 'div:has(>.t-j-inbanlabel-container)');
   const hyphens = await client.compile('##.-ad\n##.--ad\n||ads.example.test^');
   assert.equal(hyphens.stats.cosmetic, 2);
   assert.equal(hyphens.stats.network, 1);

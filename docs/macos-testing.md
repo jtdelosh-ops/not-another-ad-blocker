@@ -1,6 +1,6 @@
 # NAAB Mac preview — Chrome on Intel
 
-This package contains extension 0.3.0 and the Intel Mac companion 0.2.0. You do not need Node, Rust, Homebrew, or Xcode to install it. The companion downloads and compiles lists; Chrome performs the filtering.
+This package contains extension 0.3.1 and the Intel Mac companion 0.2.1. You do not need Node, Rust, Homebrew, or Xcode to install it. The companion downloads and compiles lists; Chrome performs the filtering.
 
 Use an Intel Mac and a current version of Chrome. Google's current Chrome releases require macOS 13 Ventura or newer; Ventura 13.3.1 meets that requirement. The registration helper requires macOS 12 or newer. This is a developer preview, signed locally for execution but not signed with an Apple Developer ID or notarized. The first installation on your own Mac still needs verification.
 
@@ -34,7 +34,7 @@ Keep this folder in place. Moving or deleting it after installation breaks the u
 2. Turn on **Developer mode** at the upper right.
 3. Click **Load unpacked**.
 4. Select **Documents → NAAB-Mac-Preview → extension**. Select this inner folder, not the whole package.
-5. Find **Not Another Ad Blocker — Local Preview** and confirm version **0.3.0**.
+5. Find **Not Another Ad Blocker — Local Preview** and confirm version **0.3.1**.
 6. Copy the **32-character ID** shown on its card. Use the ID displayed on this Mac; it can differ from your Windows ID.
 
 ## 3. Connect the Mac companion
@@ -52,7 +52,7 @@ If macOS blocks `Install.command` or `naab-companion` because the developer cann
 
 1. Click Chrome's extensions puzzle-piece icon and open **Not Another Ad Blocker**. Pin it if you want the icon visible on the toolbar.
 2. Click **Lists & diagnostics**, then **Check companion**.
-3. Confirm **Local companion 0.2.0** is reported as ready.
+3. Confirm **Local companion 0.2.1** is reported as ready.
 4. Select **EasyList — ads** and **EasyPrivacy — trackers**.
 5. Click **Download / refresh selected** and wait for the saved confirmation.
 6. Reload the pages you want to test.
@@ -62,6 +62,28 @@ A fresh Mac installation starts with zero rules. Loading the extension alone is 
 Open the NAAB popup on a normal website to see **Network requests blocked on this page**. Click **Recent activity** to inspect matched network rules and use **Refresh** to update the view. **Clear all recent activity** clears the sample without resetting the browser's page count. The session log keeps at most 300 recent matches and excludes private/incognito tabs. Counts exclude cosmetically hidden elements.
 
 For a useful comparison, temporarily turn off Privacy Badger and any other content blockers in the test Chrome profile. Compare the same page after reloading with NAAB's global protection off and then on. A nonzero count confirms network blocking; it does not establish that every video advertisement is removed.
+
+## Upgrade an existing Mac preview
+
+For extension **0.3.1** and companion **0.2.1**, update both components while keeping their installed paths:
+
+1. Download and extract the new Intel package into a temporary location. Quit Chrome completely with **Chrome → Quit Google Chrome** (or **Command-Q**).
+2. In Finder, open the existing **Documents → NAAB-Mac-Preview** folder. Replace its `extension` and `companion` folders, plus `Install.command`, `README.md`, and `BUILD-INFO.json`, with the new package's matching items so the instructions and build metadata match the installed binaries. Keep the parent folder's name and location exactly the same; avoid ending up with an extra nested `NAAB-Mac-Preview` folder.
+3. Reopen Chrome, go to `chrome://extensions`, and click **Reload** on the existing NAAB extension. Confirm **0.3.1**. Keeping the same extension folder preserves its ID and saved settings; do not remove and re-add the extension.
+4. Open **Lists & diagnostics → Check companion** and confirm **0.2.1**. The registered executable path is unchanged, so you do not need to rerun `Install.command` or enter the extension ID again. If macOS blocks the replacement `naab-companion`, approve that named file using **System Settings → Privacy & Security → Open Anyway**, then retry the check.
+
+To apply the manual fix for the reported banner:
+
+1. Under **Local filter list**, find the earlier test rule for that banner—the rule using the changing class `bffdhcdebh` or a class beginning `cbj`.
+2. Replace only that obsolete line with the following rule, keeping all your other filters:
+
+   ```text
+   pornhub.com##div:has(> .t-j-inbanlabel-container)
+   ```
+
+3. Click **Compile & replace local rules**, then reload the affected page.
+
+This rule is not enabled automatically. It hides a `div` when the named marker is its direct child, so a change to the parent class does not matter. It depends on that marker remaining present and affects only the top document, not iframe contents. Verification uses isolated fixtures rather than the live page. Cosmetic hiding does not increase the network block counter.
 
 ## Troubleshooting
 

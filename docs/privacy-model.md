@@ -1,4 +1,4 @@
-# Privacy model — extension 0.3.0 / companion 0.2.0
+# Privacy model — extension 0.3.1 / companion 0.2.1
 
 NAAB has no account, telemetry, cloud filtering service, or browsing log retained across browser sessions. Filtering decisions and the bounded activity sample stay in the browser. The companion runs as the current user when the browser launches it through Native Messaging, opens no listening socket, and exits when stdin closes.
 
@@ -29,7 +29,7 @@ HTTP/HTTPS host permissions allow DNR and cosmetics to work on visited sites. Th
 
 `declarativeNetRequestFeedback` lets the unpacked developer extension observe its own rule matches and read Chrome's page counter. Other extensions' blocking and cosmetically hidden elements are not counted. Detailed debug events are unavailable in packaged installations; the UI reports unavailable capabilities without inventing totals. See the official [DNR API](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest), [action counter API](https://developer.chrome.com/docs/extensions/reference/api/action#method-getBadgeText), and [session storage documentation](https://developer.chrome.com/docs/extensions/reference/api/storage#property-session).
 
-Downloaded rules are data and never execute JavaScript. Cosmetic CSS uses a restricted tag/class/ID compound grammar. Unsupported syntax is reported. Unsupported exceptions can deliberately weaken subscription coverage through allow guards or omitted rules, rather than applying an exception-free broader block. Local rules and site controls remain separate.
+Downloaded rules are data and never execute JavaScript. Cosmetic CSS accepts restricted tag/class/ID compounds and one optional direct-child `:has(> compound)` check, with a class or ID required on the child. Selectors are limited to 512 bytes; nesting, other pseudo-selectors/combinators, attributes, and scriptlets remain unsupported. The top-document content script installs validated CSS without sending page contents or marker text to the companion. Unsupported syntax is reported. Unsupported exceptions can deliberately weaken subscription coverage through allow guards or omitted rules, rather than applying an exception-free broader block. Local rules and site controls remain separate.
 
 ## Removal
 

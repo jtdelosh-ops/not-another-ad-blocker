@@ -1,4 +1,4 @@
-# Subscription milestone — 0.2.0
+# Architecture — extension 0.3.1 / companion 0.2.1
 
 The browser enforces filtering. The Rust companion compiles local filter text and downloads, compiles, and caches the fixed EasyList/EasyPrivacy subscriptions. Native Messaging starts the companion on demand; each `sendNativeMessage` request may run in a new process. Subscription snapshots therefore persist on disk. The browser retains its own committed compiled rules and settings, so ongoing filtering does not depend on the companion or network being available.
 
@@ -23,13 +23,15 @@ Top-document content script → authenticated cosmetics.get
 
 ## Local and subscription compilers
 
-The original `rules.compile` contract stays bounded at 128 KiB/2,000 nonempty lines and preserves its narrow grammar. The separate subscription compiler accepts the larger fixed-source lists and adds supported URL wildcards, resource restrictions, party/domain conditions, case matching, common exceptions, and `badfilter` handling. Neither compiler executes downloaded code. Main-frame requests are excluded from blocking rules; document exception guards may allow main/subframe traffic and descendants.
+The original `rules.compile` contract stays bounded at 128 KiB/2,000 nonempty lines and preserves its narrow network grammar. Both compilers share the restricted cosmetic selector validation described below. The separate subscription compiler accepts the larger fixed-source lists and adds supported URL wildcards, resource restrictions, party/domain conditions, case matching, common exceptions, and `badfilter` handling. Neither compiler executes downloaded code. Main-frame requests are excluded from blocking rules; document exception guards may allow main/subframe traffic and descendants.
 
 Full hostname filters sharing the same action and context are compacted into `requestDomains` groups of at most 1,000 hosts. Path/wildcard filters and rules with differing conditions stay separate. This reduces browser-rule use without removing those source-domain entries. Source-list statistics count accepted lines; final statistics count emitted DNR and cosmetic entries. Deduplication, compaction, exceptions, and omissions make these counts differ.
 
 The subscription compiler retains supported network exceptions before selecting blocking rules within the budget. Unsupported exception syntax can generate a broader allow guard while retaining a representable URL boundary. If that boundary cannot be represented, the compiler conservatively suppresses affected subscription coverage. Supported cosmetic exceptions become excluded domains. Unrepresentable hiding/document exceptions can suppress selectors or larger cosmetic groups; unscopable generic-hiding exceptions suppress generic subscription cosmetics. These decisions appear in coverage counters and grouped diagnostics. They do not erase local custom rules.
 
-Cosmetic selectors remain restricted ASCII tag/class/ID compounds. Positive and negative domain scope is supported for subscriptions; local imports keep positive scope only. Content scripts run only in the top document. They receive at most 12,000 validated selectors (10,000 subscription + 2,000 local), not raw lists, network arrays, or browsing history.
+Cosmetic selectors are restricted ASCII tag/class/ID compounds, optionally followed by one `:has(> child)` check. The child must be another compound containing at least one class or ID; for example, `div:has(> .ad-label)` is supported, while `div:has(> video)` is not. The entire selector stays within 512 bytes. Nested checks, other pseudo-selectors/combinators, and attribute selectors are rejected by both Rust compilation and browser-side validation. The content script installs native CSS; it does not run a procedural selector engine.
+
+Positive and negative domain scope is supported for subscriptions; local imports keep positive scope only. Content scripts run only in the top document. They receive at most 12,000 validated selectors (10,000 subscription + 2,000 local), not raw lists, network arrays, or browsing history. A direct-child rule remains dependent on its marker element being present; support for this syntax does not automatically install a site-specific rule.
 
 ## Quota and precedence
 
