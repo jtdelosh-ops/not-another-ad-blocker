@@ -20,6 +20,8 @@ Your earlier local test filters remain active alongside subscriptions. To remove
 
 ## Build and install from source
 
+For an Intel Mac test without installing development tools, use the [Mac preview setup guide](docs/macos-testing.md) and the matching private GitHub Actions artifact. It includes the built extension, Mac companion, and a current-user registration helper.
+
 Install Node.js 22 or newer, pnpm, and a stable Rust toolchain. Windows Rust normally uses the MSVC C++ build prerequisites; a configured GNU toolchain also works. See [Rust installation](https://www.rust-lang.org/tools/install/).
 
 From this repository:

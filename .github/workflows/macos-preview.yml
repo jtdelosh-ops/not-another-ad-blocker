@@ -1,0 +1,92 @@
+name: Mac preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, feature/activity-viewer]
+    paths:
+      - '.github/workflows/macos-preview.yml'
+      - 'companion/**'
+      - 'extension/**'
+      - 'scripts/install-macos.command'
+      - 'scripts/package-macos.sh'
+      - 'docs/macos-testing.md'
+      - 'tests/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build Intel Mac preview
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.19.0
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and test extension
+        working-directory: extension
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - name: Build extension and native client
+        working-directory: extension
+        run: pnpm build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-21
+        with:
+          toolchain: '1.98.1'
+          components: rustfmt
+
+      - name: Check Rust formatting and test companion
+        run: |
+          cargo fmt --manifest-path companion/Cargo.toml --all --check
+          cargo test --locked --manifest-path companion/Cargo.toml
+
+      - name: Test native host installers
+        run: |
+          node --test tests/installer.test.mjs
+          /bin/bash tests/macos-installer.test.sh
+
+      - name: Build Intel release companion
+        run: |
+          test "$(uname -m)" = x86_64
+          cargo build --release --locked --manifest-path companion/Cargo.toml
+
+      - name: Package and test Intel Mac preview
+        run: /bin/bash scripts/package-macos.sh
+
+      - name: Upload preview archive and checksum
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: NAAB-Mac-Preview-Intel
+          path: |
+            companion/target/macos-preview/*.tar.gz
+            companion/target/macos-preview/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
