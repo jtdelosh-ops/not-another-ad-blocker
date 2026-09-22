@@ -134,6 +134,9 @@ else
   TEMP_MANIFEST=$(/usr/bin/mktemp "$MANIFEST_DIRECTORY/.naab-manifest.XXXXXX")
 fi
 printf '{}\n' > "$TEMP_MANIFEST"
+# An empty dictionary can be detected as the read-only OpenStep format. Select
+# writable XML explicitly before plutil's first in-place insertion.
+/usr/bin/plutil -convert xml1 "$TEMP_MANIFEST"
 /usr/bin/plutil -insert name -string "$HOST_NAME" "$TEMP_MANIFEST"
 /usr/bin/plutil -insert description -string 'Not Another Ad Blocker local companion' "$TEMP_MANIFEST"
 /usr/bin/plutil -insert path -string "$COMPANION_BINARY" "$TEMP_MANIFEST"
