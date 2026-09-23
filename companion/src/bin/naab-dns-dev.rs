@@ -10,9 +10,10 @@ use tokio::sync::{mpsc, oneshot};
 fn help() {
     println!(
         "NAAB DNS core — optional development resolver\n\
-Usage: naab-dns-dev --config FILE [--check [--pretty]]\n\
+Usage: naab-dns-dev --config FILE [--check [--pretty] [--output FILE]]\n\
 --check validates configuration and prints a JSON DNS coverage report without opening sockets.\n\
 --pretty makes --check easier to read while retaining JSON as the default.\n\
+--output FILE saves the JSON report instead of printing it; it cannot be combined with --pretty.\n\
 Runtime commands: status, activity, clear, quit. Ctrl+C or stdin EOF also stops.\n\
 No system DNS settings or native-host registration are changed."
     );
@@ -140,6 +141,7 @@ fn commands() -> mpsc::Receiver<String> {
 async fn run() -> Result<(), String> {
     let mut arguments = std::env::args_os().skip(1);
     let mut path: Option<PathBuf> = None;
+    let mut output: Option<PathBuf> = None;
     let mut check = false;
     let mut pretty = false;
     while let Some(arg) = arguments.next() {
@@ -153,6 +155,8 @@ async fn run() -> Result<(), String> {
             check = true;
         } else if arg == "--pretty" && !pretty {
             pretty = true;
+        } else if arg == "--output" && output.is_none() {
+            output = Some(arguments.next().ok_or("--output needs a file path")?.into());
         } else {
             return Err("Unknown or repeated argument; use --help".into());
         }
@@ -160,21 +164,33 @@ async fn run() -> Result<(), String> {
     if pretty && !check {
         return Err("--pretty requires --check".into());
     }
+    if output.is_some() && !check {
+        return Err("--output requires --check".into());
+    }
+    if output.is_some() && pretty {
+        return Err("--output currently saves JSON only; remove --pretty".into());
+    }
     let path = path.ok_or("Use --config FILE (or --help)")?;
     let (config, policy) = DnsConfig::load(&path)?;
     if check {
         if pretty {
             print_pretty_report(&config, policy.report());
         } else {
-            println!(
-                "{}",
-                json!({
-                    "event": "validated",
-                    "listen": config.listen.to_string(),
-                    "upstreams": config.upstreams.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                    "compilation": policy.report()
-                })
-            );
+            let report = serde_json::to_string(&json!({
+                "event": "validated",
+                "listen": config.listen.to_string(),
+                "upstreams": config.upstreams.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                "compilation": policy.report()
+            }))
+            .map_err(|error| format!("Could not serialize report: {error}"))?;
+            if let Some(output) = output {
+                std::fs::write(&output, format!("{report}\n")).map_err(|error| {
+                    format!("Cannot write report {}: {error}", output.display())
+                })?;
+                eprintln!("DNS coverage report written to {}", output.display());
+            } else {
+                println!("{report}");
+            }
         }
         return Ok(());
     }

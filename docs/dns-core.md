@@ -20,6 +20,25 @@ To save the JSON report for later comparison:
 cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check | Set-Content -Encoding UTF8 dns-coverage.json
 ```
 
+For a direct file export that works cleanly with automation, use `--output`:
+
+```powershell
+cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check --output dns-coverage.json
+```
+
+`--output` writes JSON; omit `--pretty` when using it. Configuration files with a UTF-8 BOM, as produced by Windows PowerShell 5, are accepted.
+
+For a repeatable release gate against a real-list report, use the PowerShell checker. It can enforce a minimum active-rule count, reject safety suppression, and compare against a saved baseline:
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File scripts\check-dns-coverage.ps1 `
+  -Config ..\..\work\dns-real-lists.json `
+  -MinimumEffectiveBlockRules 1 `
+  -FailOnSuppression
+```
+
+Save a known-good JSON report with `--output`, then add `-BaselineReport dns-coverage-baseline.json` to reject a large drop in active rules. The checker does not download lists or change system DNS.
+
 The first command validates configuration and prints a JSON DNS coverage report without opening a socket. Add `--pretty` for a readable summary with diagnostics; JSON remains the default for scripts. The report distinguishes candidate block lines from deduplicated candidate rules and effective rules after safety suppression, and the pretty form repeats those counts for each named filter source. The runtime command starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
 
 The automated Windows `nslookup` invocation did not reach the development resolver in our test environment. Use NAAB's dependency-free PowerShell probe instead:
@@ -37,6 +56,14 @@ sh scripts/test-dns.sh example.com NOERROR
 ```
 
 The sample rule blocks `ads.example.test` with **NXDOMAIN**. `example.com` should resolve through the configured upstream, assuming it is reachable. The probes send packets only to the explicit loopback address and port; they do not change system DNS settings. With an unreachable upstream, allowed queries return **SERVFAIL**; that is different from a filter block.
+
+To measure local blocked-query throughput, start the resolver and run:
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File scripts\benchmark-dns.ps1 -Count 100
+```
+
+This benchmark targets the sample blocked name, so it measures the local rule-decision path without depending on an upstream or public network. It reports total and average latency; it is a comparison tool, not a production capacity guarantee.
 
 Type these commands into the resolver terminal:
 

@@ -67,7 +67,7 @@ pub fn read_bounded(path: &Path, maximum: usize) -> Result<String, String> {
     if text.len() > maximum {
         return Err(format!("{} exceeds {maximum} bytes", path.display()));
     }
-    Ok(text)
+    Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned())
 }
 
 impl DnsConfig {

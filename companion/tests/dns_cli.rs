@@ -38,6 +38,30 @@ fn dns_development_cli_checks_sample_without_listening_and_rejects_bad_arguments
     assert!(pretty_stdout.contains("this rule was omitted"));
     assert!(serde_json::from_str::<serde_json::Value>(&pretty_stdout).is_err());
 
+    let output_path = std::env::temp_dir().join(format!(
+        "naab-dns-report-{}-{}.json",
+        std::process::id(),
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let saved = Command::new(executable)
+        .args([
+            "--config",
+            "examples/dns-dev.json",
+            "--check",
+            "--output",
+            output_path.to_str().unwrap(),
+        ])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(saved.status.success());
+    assert!(saved.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&saved.stderr).contains("report written"));
+    let saved_report: serde_json::Value =
+        serde_json::from_slice(&fs::read(&output_path).unwrap()).unwrap();
+    assert_eq!(saved_report["event"], "validated");
+    fs::remove_file(output_path).unwrap();
+
     let suppression_root = std::env::temp_dir().join(format!(
         "naab-dns-pretty-{}-{}",
         std::process::id(),
@@ -75,6 +99,7 @@ fn dns_development_cli_checks_sample_without_listening_and_rejects_bad_arguments
         vec!["--wat"],
         vec!["--config"],
         vec!["--config", "examples/dns-dev.json", "--pretty"],
+        vec!["--config", "examples/dns-dev.json", "--output"],
     ] {
         let result = Command::new(executable).args(arguments).output().unwrap();
         assert!(!result.status.success());
@@ -91,11 +116,11 @@ fn dns_config_relative_paths_are_relative_to_configuration_and_input_is_bounded(
     ));
     fs::create_dir(&root).unwrap();
     fs::write(root.join("rules.txt"), "||ads.test^").unwrap();
-    fs::write(
-        root.join("config.json"),
-        r#"{"upstreams":["192.0.2.1:53"],"filterLists":[{"name":"Fixture","path":"rules.txt"}]}"#,
-    )
-    .unwrap();
+    let config =
+        br#"{"upstreams":["192.0.2.1:53"],"filterLists":[{"name":"Fixture","path":"rules.txt"}]}"#;
+    let mut config_with_bom = vec![0xef, 0xbb, 0xbf];
+    config_with_bom.extend_from_slice(config);
+    fs::write(root.join("config.json"), config_with_bom).unwrap();
     let (_, policy) = naab_companion::dns::DnsConfig::load(&root.join("config.json")).unwrap();
     assert!(policy.decide("ads.test").blocked);
     fs::write(root.join("config.json"), vec![b' '; 1024 * 1024 + 1]).unwrap();
