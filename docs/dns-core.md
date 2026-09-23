@@ -91,7 +91,7 @@ Run the offline tests with:
 cargo test --locked --manifest-path companion/Cargo.toml
 ```
 
-The DNS tests use loopback upstream fixtures, exercise real UDP/TCP sockets, and require no public DNS access or system configuration changes. The final local suite passed 88 Rust tests, including 32 DNS tests, plus 8 existing installer/native-client tests. Native-host process tests guard the existing extension protocol. An independent raw UDP probe also received the expected NXDOMAIN from the actual executable.
+The DNS tests use loopback upstream fixtures, exercise real UDP/TCP sockets, and require no public DNS access or system configuration changes. The final local suite passed 90 Rust tests, including 34 DNS tests, plus 8 existing installer/native-client tests. The compatibility fixtures cover representative blocks, exceptions, contextual rules, cosmetic rules, conservative guards, suppression safety and user overrides. Native-host process tests guard the existing extension protocol. An independent raw UDP probe also received the expected NXDOMAIN from the actual executable.
 
 Verification limits: Windows `nslookup` failed to connect from the automation environment over either UDP or TCP, while the resolver recorded no requests from that client; the direct probe and socket tests succeeded. That client interoperability check remains unresolved and should be repeated in a normal terminal before treating this as ready for system integration. macOS execution of the DNS milestone is also unverified. These are development-core results, not a Phase 2 exit approval.
 
