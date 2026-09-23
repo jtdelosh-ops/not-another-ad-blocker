@@ -1,4 +1,44 @@
-# Verification — subscription milestone 0.2.0
+# Verification
+
+## Phase 2 DNS core — 2026-09-22
+
+The opt-in [DNS development executable](dns-core.md) is implemented locally with no system-setting changes. Rust formatting and all **90 Rust tests** pass (76 library, 3 DNS CLI, 6 DNS socket integration, 2 DNS compatibility fixture, 3 native-host process), as do the **8 existing installer/native-client tests**. The 34 new DNS tests cover normalization, rule/exception precedence, unsupported context and preprocessing safety, compatibility fixtures, bounded coverage reports, activity/status outcomes and clearing, TTL/negative-cache expiry, packet/cache bounds, real UDP/TCP fallback, upstream failures, invalid messages, concurrency, command-line lifecycle and shutdown. The browser extension source did not change during this milestone; its earlier 71-test result is recorded below.
+
+A cached EasyList/EasyPrivacy pair produced 92,270 candidate DNS block rules from 92,285 candidate lines, 1,174 deduplicated allow rules and 1,404 conservative exception lines. Twenty-five unrepresentable exception cases triggered conservative suppression: **zero effective list blocks**. The report now records 140,175 input lines, 25,843 ignored lines and 22,043 unsupported lines. Explicit user domain blocks remain independent. Suppression reasons are separately sampled so ordinary diagnostic truncation cannot hide this limitation. No fresh list download or public DNS query was needed for these checks.
+
+An independent raw UDP probe received NXDOMAIN from the new executable. Windows `nslookup` could not connect from the automation environment over UDP or TCP using its scripted invocation; the resolver observed no queries from that client. The repository includes direct Windows and macOS smoke probes (`scripts\test-dns.ps1` and `scripts/test-dns.sh`) that target the development port without changing system DNS. The new DNS core has not been run on macOS in this environment. System DNS integration, managed lifecycle, extension controls and a new package/release were not implemented in this milestone.
+
+## Phase 1 exit review — 2026-09-22
+
+The [exit review](phase-1-exit-review.md) records the completed 0.4.1 performance follow-up. Fresh checks pass: 71 extension tests, 56 Rust tests, 8 installer/native tests, typechecking/build, and the activity, picker and full-subscription browser regressions. The user reports successful 0.4.0 picker testing on the Intel Mac and no visible ads during exploratory browsing apart from click-triggered popup ad pages. This is user-reported compatibility evidence, not a comprehensive site/platform certification. Full-list worker wake fell from a matched 1,689 ms median to 567 ms; DNS implementation had not started at that checkpoint.
+
+## Picker milestone — extension 0.4.0 / companion 0.2.1
+
+The basic picker adds hover selection, supported site-scoped selectors, an all-match preview, cancel, append-only save, and immediate undo. TypeScript checking and **67 extension tests** pass, including permission grants, cross-tab/frame/host denial, expiration, worker recreation, failed compilation, local edits, subscription preservation, and pause handling. The **8 installer/native integration tests** pass with the unchanged companion.
+
+`tests/picker-browser.mjs` passes in isolated Chromium on Windows using a loopback fixture and the real Rust compiler through a test-only local transport bridge. It checks trusted selection, prevention of page capture actions/link navigation and frame activation, keyboard preview, cancel cleanup, scoped saves/reloads, undo after another local edit, matching multiple elements, parent selection, native failure retention, and site/global controls. Existing cosmetic-child browser checks also pass. Preview and saved-state screenshots were inspected for readable controls. No existing browser profile or live advertising site is used.
+
+Run `node tests/picker-browser.mjs` with the same `NAAB_PLAYWRIGHT`, `NAAB_CHROMIUM`, and optional `NAAB_BINARY` configuration described below, after building the extension and companion. This does not prove Chrome native-host discovery on a user's machine. The earlier 0.3.1 preview was installed and tested by the user on Intel macOS Ventura 13.3.1; the user has since reported successful 0.4.0 picker testing on that Mac. The exit review above supersedes the milestone's earlier pending-review status; broad platform coverage and explicit performance budgets remain limited.
+
+Older milestone reports below describe their verification scope at the time; their platform and feature limitations are superseded where noted above.
+
+## Activity milestone — extension 0.3.0 / companion 0.2.0
+
+The activity update adds Chrome's native page network-block total and a separate 300-entry session-only sample of matched network rules. TypeScript checking and all **58 extension tests** pass; the **8 installer/native integration tests** also pass against the unchanged companion. The 55 Rust tests passed at the previous milestone; no Rust source or native protocol changed in this update.
+
+New tests cover bounded capture and restoration, URL redaction before storage, duplicate events, clear during an in-flight storage write, failed storage, tab cleanup, native-counter action/placeholder guards, trusted read/clear routes, installed-rule ID composition, metadata during commits/rollback, safe UI rendering, unavailable versus zero totals, and stale UI responses.
+
+The optional `tests/activity-browser.mjs` regression **passed in isolated Chrome for Testing 151 on Windows** against the final 0.3.0 bundle. It verified an exact count of one block with two log entries (block and allowance), cosmetic exclusion, redaction before session storage, denied content-script reads/clears, clear without resetting the count, navigation resets, global/site controls, tab cleanup, actual worker termination and recovery with log/count retention, and browser restart clearing activity while preserving rules. The final viewer screenshot was inspected for readable, unclipped controls and correct count/site labels.
+
+The regression uses loopback fixtures with known blocking/allowance/cosmetic rules. DNR feedback, browser counts, activity routes, session storage and viewer UI are real; only native-host fixture import/status responses are substituted with output from the actual Rust executable. Run it after the README build steps:
+
+```sh
+node tests/activity-browser.mjs
+```
+
+Detailed match events are an unpacked-extension capability. The sample is not a complete page history: it includes previous pages in the selected tab, drops older records, and can miss startup/termination events. Rule details and tab hostnames reflect the state observed when an event arrives; events delayed across updates/navigation may lack exact historical attribution. Packed/store logging behavior and installed macOS browser integration remain unverified. The native counter excludes allowances and cosmetic hiding for the currently supported action types.
+
+## Subscription milestone — 0.2.0
 
 Verified on Windows on 2026-09-21. This is an implementation checkpoint with partial EasyList/EasyPrivacy compatibility, not a completed Phase 1 exit review.
 
@@ -36,7 +76,7 @@ The subscription regression loads the full real snapshot through the options int
 
 **Browser transport limit:** these browser regressions substitute `chrome.runtime.sendNativeMessage` with responses from the real Rust compiler/snapshot. The live integration script separately uses the built NativeClient and real framed Rust processes for downloads and every page, including persistence across host processes. Automated checks do not prove installed-browser native-host discovery/launch. The user reported the earlier installation worked; version 0.2.0 should be checked in the installed browser after reloading the extension. No registration or existing browser profile was modified by these tests.
 
-**Remaining limits:** macOS behavior is untested on macOS hardware. Broad day-to-day site compatibility, interruption at every refresh stage, formal performance budgets, and release packaging remain unverified. Advanced filter syntax, activity history, block counts, and the element picker remain unfinished. A failed refresh preserves committed filtering; unsupported exceptions can deliberately reduce subscription coverage.
+**Remaining limits:** macOS browser installation/registration is untested on macOS hardware; hosted Windows and macOS CI passed the deterministic baseline checks when the repository was published. Broad day-to-day site compatibility, interruption at every refresh stage, formal performance budgets, and release packaging remain unverified. Advanced filter syntax and the element picker remain unfinished. A failed refresh preserves committed filtering; unsupported exceptions can deliberately reduce subscription coverage. Activity and page counts are covered by the newer milestone above.
 
 The Windows GNU linker emitted a nonfatal `.drectve` warning for debug/test binaries. All resulting binaries used in the tests ran successfully.
 

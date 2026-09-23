@@ -1,5 +1,6 @@
 //! Bounded local compilation, subscription refresh, and Chromium Native Messaging.
 
+pub mod dns;
 pub mod lists;
 pub mod messaging;
 pub mod protocol;

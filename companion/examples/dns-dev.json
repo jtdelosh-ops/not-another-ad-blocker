@@ -1,0 +1,11 @@
+{
+  "listen": "127.0.0.1:5354",
+  "upstreams": ["1.1.1.1:53", "1.0.0.1:53"],
+  "timeoutMs": 2000,
+  "cacheEntries": 1024,
+  "maxInFlight": 64,
+  "activityCapacity": 300,
+  "filterLists": [{"name": "Example rules", "path": "dns-filters.txt"}],
+  "allowlist": ["allowed.ads.example.test"],
+  "blocklist": ["manual-block.example.test"]
+}

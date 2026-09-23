@@ -1,12 +1,16 @@
 import { RecoveryRequiredError, disabledBy, errorMessage, hostname, ruleCounts, type CompanionStatus, type ConfigView } from '../shared/types';
 import { element, renderRecoveryRequired, request } from '../shared/ui';
+import type { ActivityView } from '../shared/activity';
 let config: ConfigView;
 let recoveryRequired = false;
 let host: string | null = null;
+let activeTabId: number | null = null;
 const globalToggle = element<HTMLInputElement>('global');
 const siteToggle = element<HTMLInputElement>('site-toggle');
+const pickerButton = element<HTMLButtonElement>('picker');
 function render(): void {
   if (recoveryRequired) {
+    pickerButton.disabled = true;
     renderRecoveryRequired(element('protection'), [globalToggle, siteToggle]);
     element('counts').textContent = '';
     return;
@@ -21,6 +25,7 @@ function render(): void {
   globalToggle.disabled = false;
   siteToggle.checked = !exception;
   siteToggle.disabled = !host || !config.enabled;
+  pickerButton.disabled = !host || !config.enabled || !!exception || activeTabId === null;
   element('site-label').textContent = exception ? `Resume ${exception}` : 'Protection for this site';
   element('site-note').textContent = host ? 'Site settings include subdomains. Reload the page after a change.' : 'Site controls and cosmetic filtering apply to HTTP(S) pages. Browser pages cannot be filtered.';
 }
@@ -34,12 +39,34 @@ async function change(message: unknown): Promise<void> {
 globalToggle.addEventListener('change', () => void change({ type: 'config.enabled', enabled: globalToggle.checked }));
 siteToggle.addEventListener('change', () => { if (host) void change({ type: 'config.site', host: disabledBy(host, config.disabledSites) ?? host, enabled: siteToggle.checked }); });
 element('options').addEventListener('click', () => void chrome.runtime.openOptionsPage());
+pickerButton.addEventListener('click', () => {
+  pickerButton.disabled = true;
+  void request({ type: 'picker.start', tabId: activeTabId }).then(() => window.close(), error => {
+    element('error').textContent = errorMessage(error); render();
+  });
+});
+element('activity').addEventListener('click', () => {
+  void chrome.tabs.create({ url: chrome.runtime.getURL('activity.html') + (activeTabId === null ? '' : `#tab=${activeTabId}`) }).catch(error => { element('error').textContent = errorMessage(error); });
+});
+async function loadPageCount(tabId: number | null): Promise<void> {
+  if (tabId === null) { element('page-count').textContent = 'Unavailable'; return; }
+  try {
+    const activity = await request<ActivityView>({ type: 'activity.get', tabId });
+    element('page-count').textContent = activity.blockedCount ?? 'Unavailable';
+    element('page-count-note').textContent = activity.error ?? 'Current page only. Cosmetically hidden elements are not counted.';
+  } catch {
+    element('page-count').textContent = 'Unavailable';
+    element('page-count-note').textContent = 'The browser could not provide a page counter. Protection controls remain available.';
+  }
+}
 void (async () => {
   try {
     const [saved, tabs] = await Promise.all([request<ConfigView>({ type: 'config.get' }), chrome.tabs.query({ active: true, currentWindow: true })]);
     config = saved;
+    activeTabId = Number.isInteger(tabs[0]?.id) && tabs[0].id! >= 0 ? tabs[0].id! : null;
     host = hostname(tabs[0]?.url);
     render();
+    void loadPageCount(activeTabId);
   } catch (error) { recoveryRequired ||= error instanceof RecoveryRequiredError; element('error').textContent = errorMessage(error); if (recoveryRequired) render(); else element('protection').textContent = 'Protection state could not be verified'; }
 })();
 void request<CompanionStatus>({ type: 'status.get' }).then(status => { element('companion').textContent = status.healthy ? `Companion ${status.companionVersion} · ${status.capabilities.includes('lists.refresh') && status.capabilities.includes('lists.page') ? 'ready for subscriptions' : 'update companion for subscriptions'}` : 'Companion reported unhealthy'; }, () => { element('companion').textContent = 'Companion unavailable. Saved rules still work; open settings for setup.'; });

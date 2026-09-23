@@ -1,0 +1,343 @@
+{
+  "date": "2026-09-22T19:41:19.052Z",
+  "platform": "win32 10.0.19045",
+  "cpu": "Intel(R) Xeon(R) CPU E3-1245 v6 @ 3.70GHz",
+  "logicalCpus": 8,
+  "totalMemoryGiB": 63.920562744140625,
+  "node": "v24.19.0",
+  "sourceCommit": "0260a96a3be1f297aec5ed48646fb5838e1de2c6",
+  "listSnapshot": {
+    "lists": [
+      {
+        "bytes": 2182105,
+        "fetchedAt": "2026-09-21T23:22:20.3148304Z",
+        "id": "easylist",
+        "sha256": "3ba097c1d23f734f5388198d1731dcc851d53841d1b9f611ec3e4c092150a39d",
+        "title": "EasyList",
+        "url": "https://easylist.to/easylist/easylist.txt",
+        "version": "202609212310"
+      },
+      {
+        "bytes": 1504635,
+        "fetchedAt": "2026-09-21T23:22:20.3148304Z",
+        "id": "easyprivacy",
+        "sha256": "cdc76653740ca8d2975dc64204e10af482241828ee7b62e95cbda66f48b17a32",
+        "title": "EasyPrivacy",
+        "url": "https://easylist.to/easylist/easyprivacy.txt",
+        "version": "202609212310"
+      }
+    ],
+    "counts": {
+      "cosmetic": 7536,
+      "diagnostics": 49,
+      "network": 12822
+    }
+  },
+  "companionStartupRoundTripMs": {
+    "samples": [
+      23.41,
+      20.81,
+      20.79,
+      21.52,
+      20.48,
+      20.21,
+      20.2,
+      20.36,
+      21.61
+    ],
+    "median": 20.79,
+    "min": 20.2,
+    "max": 23.41
+  },
+  "runs": [
+    {
+      "mode": "no-extension",
+      "browserStartToWorkerMs": null,
+      "scenarios": [
+        {
+          "scenario": "baseline",
+          "pageLoadEventMs": {
+            "samples": [
+              73.1,
+              62.7,
+              59.2,
+              55,
+              55.6,
+              67.7,
+              68.3,
+              68.4,
+              68.3
+            ],
+            "median": 67.7,
+            "min": 55,
+            "max": 73.1
+          },
+          "memory": {
+            "privateMiB": 404.984375,
+            "workingSetMiB": 517.76953125,
+            "processCount": 7
+          }
+        }
+      ]
+    },
+    {
+      "mode": "extension",
+      "browserStartToWorkerMs": 322.87900000000036,
+      "scenarios": [
+        {
+          "scenario": "on",
+          "pageLoadEventMs": {
+            "samples": [
+              63.9,
+              64,
+              57.9,
+              58.6,
+              59.5,
+              58,
+              70.4,
+              59.7,
+              58.7
+            ],
+            "median": 59.5,
+            "min": 57.9,
+            "max": 70.4
+          },
+          "memory": {
+            "privateMiB": 664.13671875,
+            "workingSetMiB": 799.4609375,
+            "processCount": 7
+          }
+        },
+        {
+          "scenario": "off",
+          "pageLoadEventMs": {
+            "samples": [
+              72.9,
+              60.3,
+              63.2,
+              56.9,
+              57.1,
+              57.7,
+              66.7,
+              59.9,
+              57.7
+            ],
+            "median": 59.9,
+            "min": 56.9,
+            "max": 72.9
+          },
+          "memory": {
+            "privateMiB": 850.2734375,
+            "workingSetMiB": 979.3671875,
+            "processCount": 7
+          }
+        },
+        {
+          "scenario": "on",
+          "pageLoadEventMs": {
+            "samples": [
+              66.1,
+              61.2,
+              58.5,
+              59.7,
+              58,
+              60.7,
+              61.1,
+              58.5,
+              59.9
+            ],
+            "median": 59.9,
+            "min": 58,
+            "max": 66.1
+          },
+          "memory": {
+            "privateMiB": 997.98828125,
+            "workingSetMiB": 1133.62890625,
+            "processCount": 7
+          }
+        },
+        {
+          "scenario": "off",
+          "pageLoadEventMs": {
+            "samples": [
+              62.5,
+              60.8,
+              57.6,
+              61.5,
+              64.2,
+              59.7,
+              58.9,
+              61.6,
+              58.9
+            ],
+            "median": 60.8,
+            "min": 57.6,
+            "max": 64.2
+          },
+          "memory": {
+            "privateMiB": 1156.88671875,
+            "workingSetMiB": 1291.2734375,
+            "processCount": 7
+          }
+        }
+      ],
+      "fullListWorkerWakeAndReconcileMs": {
+        "samples": [
+          1211.62,
+          1636.02,
+          1582.59,
+          1571.1,
+          1558.27
+        ],
+        "median": 1571.1,
+        "min": 1211.62,
+        "max": 1636.02
+      }
+    },
+    {
+      "mode": "no-extension",
+      "browserStartToWorkerMs": null,
+      "scenarios": [
+        {
+          "scenario": "baseline",
+          "pageLoadEventMs": {
+            "samples": [
+              86.7,
+              59.6,
+              58.6,
+              57.7,
+              55.7,
+              57,
+              53.1,
+              57.3,
+              61.2
+            ],
+            "median": 57.7,
+            "min": 53.1,
+            "max": 86.7
+          },
+          "memory": {
+            "privateMiB": 403.68359375,
+            "workingSetMiB": 514.58203125,
+            "processCount": 7
+          }
+        }
+      ]
+    },
+    {
+      "mode": "extension",
+      "browserStartToWorkerMs": 360.5583000000006,
+      "scenarios": [
+        {
+          "scenario": "on",
+          "pageLoadEventMs": {
+            "samples": [
+              67.5,
+              71.4,
+              76.4,
+              68.3,
+              69.7,
+              69,
+              70.3,
+              73.8,
+              68.5
+            ],
+            "median": 69.7,
+            "min": 67.5,
+            "max": 76.4
+          },
+          "memory": {
+            "privateMiB": 666.89453125,
+            "workingSetMiB": 799.5078125,
+            "processCount": 7
+          }
+        },
+        {
+          "scenario": "off",
+          "pageLoadEventMs": {
+            "samples": [
+              67.6,
+              58.1,
+              56.8,
+              57,
+              62.9,
+              60.3,
+              60.8,
+              68.9,
+              61.5
+            ],
+            "median": 60.8,
+            "min": 56.8,
+            "max": 68.9
+          },
+          "memory": {
+            "privateMiB": 853.109375,
+            "workingSetMiB": 980.1015625,
+            "processCount": 7
+          }
+        },
+        {
+          "scenario": "on",
+          "pageLoadEventMs": {
+            "samples": [
+              66.1,
+              64.3,
+              64.1,
+              60.3,
+              60.3,
+              60.1,
+              58.6,
+              59.6,
+              62.3
+            ],
+            "median": 60.3,
+            "min": 58.6,
+            "max": 66.1
+          },
+          "memory": {
+            "privateMiB": 995.10546875,
+            "workingSetMiB": 1127.734375,
+            "processCount": 7
+          }
+        },
+        {
+          "scenario": "off",
+          "pageLoadEventMs": {
+            "samples": [
+              66.4,
+              65.7,
+              67.5,
+              57.5,
+              59.5,
+              68.9,
+              58.5,
+              59.1,
+              57.6
+            ],
+            "median": 59.5,
+            "min": 57.5,
+            "max": 68.9
+          },
+          "memory": {
+            "privateMiB": 1157.3828125,
+            "workingSetMiB": 1288.13671875,
+            "processCount": 7
+          }
+        }
+      ],
+      "fullListWorkerWakeAndReconcileMs": {
+        "samples": [
+          1330.58,
+          1907.21,
+          1796.1,
+          1779.41,
+          1725.17
+        ],
+        "median": 1779.41,
+        "min": 1330.58,
+        "max": 1907.21
+      }
+    }
+  ],
+  "chromium": "151.0.7922.34"
+}

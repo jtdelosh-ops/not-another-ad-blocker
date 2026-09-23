@@ -1,6 +1,8 @@
 # Not Another Ad Blocker
 ## Product & Engineering Roadmap
 
+Current checkpoint (2026-09-22): [Phase 1 is complete](phase-1-exit-review.md) for the extension 0.4.1 / companion 0.2.1 developer preview. Phase 2 has begun with an opt-in [DNS development core](dns-core.md): loopback UDP/TCP, forwarding, bounded cache, conservative domain compilation, user overrides and local diagnostics. System integration, extension DNS controls, full-list compatibility and cross-platform verification remain unfinished. The requirements below describe intended scope, not a list of completed features.
+
 **Project name:** Not Another Ad Blocker  
 **Working abbreviation:** NAAB  
 **Project type:** Local-first browser privacy and content-filtering system  
@@ -1058,6 +1060,27 @@ Proxy work should start only when there is a documented, concrete use case that:
 2. cosmetic filtering cannot solve,
 3. DNS cannot solve,
 4. and provides enough user value to justify the additional security and maintenance burden.
+
+## Cross-cutting follow-up — Navigation and video-ad coverage
+
+Browser testing identified two related gaps that should be tracked alongside Phase 2 and the extension work before a broader release. They are browser-enforcement tasks, not DNS requirements.
+
+### Popup and redirect protection
+
+Some video clicks can open a separate advertising page or tab before the requested content starts. Add an extension-layer navigation safeguard that:
+
+- Detects unexpected popup or redirect destinations.
+- Blocks known advertising and tracking destinations before navigation where the browser permits.
+- Preserves intentional user-opened links.
+- Records the blocked navigation and reason in the activity view.
+
+This belongs in the browser enforcement layer because DNS can block a destination hostname but cannot reliably determine whether a navigation was an unwanted popup.
+
+### YouTube video-ad investigation
+
+Evaluate pre-roll, mid-roll, overlay, and companion ads separately. Determine which cases can be handled safely by existing network rules, DNS rules, or cosmetic filtering. Treat player-specific handling as experimental and regression-tested because YouTube can change its delivery behavior.
+
+The goal is reliable coverage where technically feasible, not a promise that every YouTube advertisement can be removed. Do not use broad rules that risk breaking playback, and document unsupported cases.
 
 ---
 

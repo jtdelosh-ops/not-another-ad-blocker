@@ -2,22 +2,38 @@
 
 This guide covers the version on this branch. Start with the [project overview](../README.md) for NAAB's purpose and development status.
 
-For a first installation, start with [Build and install from source](#build-and-install-from-source).
+For a first installation, start with [Build and install from source](#build-and-install-from-source), or use the [Intel Mac preview guide](macos-testing.md) for the packaged build.
+
+## Quick verification
+
+After installing the extension and companion, use the extension's **Check companion** control to confirm the browser connection. For the separate DNS development preview, follow [DNS core: Try it](dns-core.md#try-it). The preview is opt-in and does not change system DNS settings.
+
+For a repeatable local blocking check, start `naab-dns-dev` in one terminal and run this from the repository root in another:
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File scripts\benchmark-dns.ps1 -Count 100
+```
+
+The expected result is `Result: PASS`, `ResponseCode: NXDOMAIN`, and `FailedQueries: 0`. This confirms the local blocked-domain path; it does not test browser filtering or system-wide DNS. Use the allowed-domain command in the DNS guide when you also want to exercise upstream forwarding.
 
 ## Update an existing installation
 
 If you already loaded the extension and registered the companion at this repository's release-binary path:
 
-1. Open `chrome://extensions` (or `edge://extensions`) and click the extension's **Reload** button. Accept an updated permission prompt if the browser displays one. Version 0.2.0 adds `unlimitedStorage` for the local compiled-rule cache and its recovery journal.
-2. Open the extension's **Lists & diagnostics** page and click **Check companion**. It should report **Local companion 0.2.0** and that EasyList/EasyPrivacy downloads are available.
-3. Select **EasyList — ads**, **EasyPrivacy — trackers**, or both. Click **Download / refresh selected** and wait for the saved confirmation.
-4. Review the list metadata and unsupported/safety-omission counts, then reload your open pages.
+1. Build or replace both the extension and companion at their existing paths. For the downloaded Mac package, follow [Upgrade an existing Mac preview](macos-testing.md#upgrade-an-existing-mac-preview).
+2. Open `chrome://extensions` (or `edge://extensions`), click the existing extension's **Reload** button, and confirm version **0.4.1**. Accept a permission prompt if upgrading from a version before 0.3.0, which added `declarativeNetRequestFeedback` for network counts and local debug activity.
+3. Open **Lists & diagnostics**, click **Check companion**, and confirm **0.2.1** before compiling the new cosmetic syntax.
+4. Reload an HTTP(S) page and open the NAAB popup. Its network block count and **Recent activity** remain separate from cosmetic hiding. Clearing the activity sample does not reset the browser's page counter.
+
+Existing downloaded lists and protection settings remain saved. Both updated components are needed for the new cosmetic syntax; a new list download is not required to compile a local rule.
 
 The extension folder and registered executable stay at the same paths, so you do not need to copy a new extension ID or repeat registration. Registration is needed again if the extension ID or executable path changes. If the companion still reports an older version, make sure the updated release executable is at the registered path.
 
-Your earlier local test filters remain active alongside subscriptions. To remove only those tests, delete their lines under **Local filter list**, keeping any other local filters, and click **Compile & replace local rules**. This leaves downloaded subscriptions and site settings intact.
+Your earlier local test filters remain active alongside subscriptions. Edit only the unwanted test lines under **Local filter list**, retain your other filters, then click **Compile & replace local rules**. This leaves downloaded subscriptions and site settings intact.
 
 ## Build and install from source
+
+For an Intel Mac test without installing development tools, use the [Mac preview setup guide](macos-testing.md) and the matching private GitHub Actions artifact. It includes the built extension, Mac companion, and a current-user registration helper.
 
 Install Node.js 22 or newer, pnpm, and a stable Rust toolchain. Windows Rust normally uses the MSVC C++ build prerequisites; a configured GNU toolchain also works. See [Rust installation](https://www.rust-lang.org/tools/install/).
 
@@ -51,9 +67,21 @@ macOS:
 node scripts/native-host.mjs --extension-id YOUR_EXTENSION_ID --binary companion/target/release/naab-companion --apply
 ```
 
-Add `--browser edge` for Microsoft Edge. Chrome is the default. macOS registration paths are implemented but still need verification on macOS hardware. The installer does not yet support other operating systems or browsers.
+Add `--browser edge` for Microsoft Edge. Chrome is the default. The packaged Intel Mac helper has been tested with Chrome on Ventura 13.3.1; broader platform and browser installation coverage remains in progress. The installer does not yet support other operating systems or browsers.
 
 Open **Lists & diagnostics**, check the companion, and download your selected subscriptions. The bundled `.test` demo remains useful for isolated filtering tests, but its reserved domains are not an everyday ad-blocking list.
+
+## Block an element with the picker
+
+1. Open a normal website with NAAB protection enabled.
+2. Open the NAAB popup and click **Block something on this page**.
+3. Point at the unwanted element and click. The panel shows the site rule and how many elements match it.
+4. Click **Preview**. Use **Restore preview**, **Select parent**, or **Pick another** to adjust the selection. **Cancel** or **Escape** restores the temporary preview without saving.
+5. Click **Save rule** to append it to your local filters. The companion must be available to compile the rule. **Undo saved rule** removes that specific addition while the panel remains open; **Done** closes the panel.
+
+For later removal, delete the corresponding rule and its `! NAAB picker` comment under **Local filter list**, retaining other rules, then compile. Rules apply to the selected hostname and its subdomains. They hide content visually and do not increment the network counter. Existing local filters, subscriptions, and site exceptions are preserved.
+
+This basic picker supports the existing restricted class/ID selector grammar. It cannot pick inside embedded frames or a component's shadow tree. Elements without a supported selector require choosing a parent or another element. Class changes can break saved rules; broad selector generation and automatic network correlation are deferred. Private tabs are not supported. Picker permissions expire after ten minutes; restart from the popup if the session expires. Reload existing pages after updating the extension so they receive the new content script.
 
 ## Visual check without live advertising
 
@@ -71,7 +99,7 @@ Subscription network support includes ASCII URL patterns with Adblock-style anch
 
 The browser's capacity is reserved for up to 2,000 local network rules and 200 site overrides before allocating subscription rules. Supported allow exceptions are kept before selecting blocks within the remaining budget. The UI reports unsupported lines, capacity omissions, and conservative safety omissions. Unsupported exception syntax can produce broader allowance guards or omit related blocking/hiding rules to reduce breakage; this lowers filtering coverage.
 
-Cosmetic support remains limited to compound tag/class/ID selectors, such as `.advertisement`, `div.sidebar-ad`, and `#sponsor`, with positive/negative domain scopes and supported `#@#` exceptions. Cosmetics apply only to the top document. Complex selectors, attributes, combinators, pseudo-selectors, scriptlets, and procedural rules are unsupported. If a generic-hiding exception cannot be safely scoped, generic subscription cosmetics are suppressed conservatively; your local generic cosmetic rules still work. Unsupported document/hiding exceptions can also reduce cosmetic coverage.
+Cosmetics support ASCII tag/class/ID compounds, such as `.advertisement`, `div.sidebar-ad`, and `#sponsor`, plus one direct-child check: `div:has(> .ad-label)`. The parent and child must each be compounds, the child must include a class or ID, and the whole selector is limited to 512 bytes. Nesting, attributes, other pseudo-selectors/combinators, scriptlets, and procedural rules remain unsupported. Positive/negative domain scopes and supported `#@#` exceptions apply to subscriptions. Cosmetics affect only the top document. If a generic-hiding exception cannot be safely scoped, generic subscription cosmetics are suppressed conservatively; your local generic cosmetic rules still work. Unsupported document/hiding exceptions can also reduce cosmetic coverage.
 
 There is no claim of complete EasyList, EasyPrivacy, Adblock Plus, or uBlock Origin compatibility. Refresh the lists and read the reported coverage rather than treating every downloaded line as an active rule.
 
@@ -84,10 +112,13 @@ Local imports retain their original, narrower syntax:
 ||tracker.example.test^$third-party
 @@||ads.example.test/allowed.js
 example.test##.advertisement
+example.test##div:has(> .ad-label)
 ##.naab-demo-ad
 ```
 
-A local network pattern must use a domain anchor ending in `^` or followed by a literal path; `@@` exceptions and `$third-party` are supported. Local cosmetics accept the same restricted compound selector grammar with optional positive domains. Local imports do not support the broader subscription modifiers or cosmetic exceptions. Limits remain 128 KiB UTF-8 text, 2,000 nonempty lines, and 2,048 bytes per line. Import replaces only the previous local list.
+A local network pattern must use a domain anchor ending in `^` or followed by a literal path; `@@` exceptions and `$third-party` are supported. Local cosmetics accept the same restricted compound/direct-child selector grammar with optional positive domains. Local imports do not support the broader subscription modifiers or cosmetic exceptions. Limits remain 128 KiB UTF-8 text, 2,000 nonempty lines, and 2,048 bytes per line. Import replaces only the previous local list.
+
+The manual rule for the reported rotating-class banner is `pornhub.com##div:has(> .t-j-inbanlabel-container)`. It is not installed automatically. Replace only the obsolete local test rule for that banner and retain other filters. This hides a `div` with that direct-child marker even when the parent class changes; it depends on the marker remaining present and applies only to the top document. Automated verification uses an isolated fixture. The [Mac upgrade guide](macos-testing.md#upgrade-an-existing-mac-preview) includes the edit steps.
 
 Local network blocks/allows use priorities 3/4, above subscription priorities 1/2. Site protection overrides use priority 100. A paused hostname also pauses its subdomains; remove a parent exception before re-enabling a child. Global-off pauses all protection. Reload pages after changing rules or site controls.
 
@@ -118,7 +149,7 @@ Native integration tests use the extension's actual client with framed stdin/std
 
 GitHub Actions runs the deterministic extension, Rust, installer, and native integration checks on Windows and macOS for pull requests and pushes to `main`. CI uses Node.js 22, pnpm 11.19.0, and Rust 1.98.1 with locked dependencies; the jobs are named `Test (windows-latest)` and `Test (macos-latest)`. Live list downloads and browser smoke tests remain separate checks, so CI does not verify browser registration or advertising availability.
 
-Next work covers activity diagnostics and honest block counts; the visual element picker with preview/undo; more compatibility and performance tests; macOS installation verification; and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
+Next work covers more compatibility and performance tests, broader macOS installation verification, and the Phase 1 exit review. Phase 2 DNS work remains gated on Phase 1 completion.
 
 EasyList and EasyPrivacy are maintained by **The EasyList authors** and are downloaded on request, not bundled into this repository. Their copyright and dual-license details are on the official [EasyList about page](https://easylist.to/pages/about.html). No distribution license has been selected for NAAB itself.
 
