@@ -1061,6 +1061,27 @@ Proxy work should start only when there is a documented, concrete use case that:
 3. DNS cannot solve,
 4. and provides enough user value to justify the additional security and maintenance burden.
 
+## Cross-cutting follow-up — Navigation and video-ad coverage
+
+Browser testing identified two related gaps that should be tracked alongside Phase 2 and the extension work before a broader release. They are browser-enforcement tasks, not DNS requirements.
+
+### Popup and redirect protection
+
+Some video clicks can open a separate advertising page or tab before the requested content starts. Add an extension-layer navigation safeguard that:
+
+- Detects unexpected popup or redirect destinations.
+- Blocks known advertising and tracking destinations before navigation where the browser permits.
+- Preserves intentional user-opened links.
+- Records the blocked navigation and reason in the activity view.
+
+This belongs in the browser enforcement layer because DNS can block a destination hostname but cannot reliably determine whether a navigation was an unwanted popup.
+
+### YouTube video-ad investigation
+
+Evaluate pre-roll, mid-roll, overlay, and companion ads separately. Determine which cases can be handled safely by existing network rules, DNS rules, or cosmetic filtering. Treat player-specific handling as experimental and regression-tested because YouTube can change its delivery behavior.
+
+The goal is reliable coverage where technically feasible, not a promise that every YouTube advertisement can be removed. Do not use broad rules that risk breaking playback, and document unsupported cases.
+
 ---
 
 # 11. Phase 3 — System-Wide Filtering

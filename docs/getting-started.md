@@ -4,6 +4,18 @@ This guide covers the version on this branch. Start with the [project overview](
 
 For a first installation, start with [Build and install from source](#build-and-install-from-source), or use the [Intel Mac preview guide](macos-testing.md) for the packaged build.
 
+## Quick verification
+
+After installing the extension and companion, use the extension's **Check companion** control to confirm the browser connection. For the separate DNS development preview, follow [DNS core: Try it](dns-core.md#try-it). The preview is opt-in and does not change system DNS settings.
+
+For a repeatable local blocking check, start `naab-dns-dev` in one terminal and run this from the repository root in another:
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File scripts\benchmark-dns.ps1 -Count 100
+```
+
+The expected result is `Result: PASS`, `ResponseCode: NXDOMAIN`, and `FailedQueries: 0`. This confirms the local blocked-domain path; it does not test browser filtering or system-wide DNS. Use the allowed-domain command in the DNS guide when you also want to exercise upstream forwarding.
+
 ## Update an existing installation
 
 If you already loaded the extension and registered the companion at this repository's release-binary path:

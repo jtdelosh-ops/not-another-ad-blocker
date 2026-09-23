@@ -40,6 +40,21 @@ const FIXTURES: &[Fixture] = &[
         probes: &[("ads.example", false), ("sub.ads.example", false)],
     },
     Fixture {
+        name: "case trailing dot and label boundary",
+        text: "||Ads.Example^",
+        blocks: 1,
+        allows: 0,
+        conservative_lines: 0,
+        ignored: 0,
+        unsupported: 0,
+        suppressed: false,
+        probes: &[
+            ("ADS.EXAMPLE.", true),
+            ("child.ads.example", true),
+            ("badads.example", false),
+        ],
+    },
+    Fixture {
         name: "contextual and path rules",
         text: "||path.example/ads.js\n||third.example^$third-party\n||image.example^$image\n/ads/",
         blocks: 0,

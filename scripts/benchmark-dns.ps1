@@ -70,11 +70,16 @@ try {
 if ($failures -gt 0) { throw "$failures of $Count DNS queries failed" }
 
 [pscustomobject]@{
+    Result = 'PASS'
     Name = $Name
     Server = $Server
     Port = $Port
     Queries = $Count
+    ExpectedResponseCode = $ExpectedResponseCode
     ResponseCode = $lastCode
+    SuccessfulQueries = $Count - $failures
+    FailedQueries = $failures
     ElapsedMilliseconds = [math]::Round($stopwatch.Elapsed.TotalMilliseconds, 2)
     AverageMilliseconds = [math]::Round($stopwatch.Elapsed.TotalMilliseconds / $Count, 2)
+    QueriesPerSecond = [math]::Round($Count / $stopwatch.Elapsed.TotalSeconds, 2)
 }

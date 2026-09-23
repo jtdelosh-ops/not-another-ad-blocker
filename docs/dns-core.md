@@ -1,5 +1,7 @@
 # DNS core development preview
 
+The next system-integration design and recovery checklist is documented in [System DNS design](system-dns-design.md); it is planning material only and does not change this development preview.
+
 NAAB's DNS core is an optional local resolver that blocks matching domain lookups before forwarding allowed queries to a chosen upstream. It extends the Rust companion project with a separate `naab-dns-dev` executable. This is the first Phase 2 milestone, available from source; it is not system-wide protection yet.
 
 The listener runs on an unprivileged loopback port, with UDP and TCP support. It changes no network settings and installs no service. The extension and its Native Messaging host continue working independently. Requests reach this resolver only when a DNS client explicitly targets its port.
@@ -63,7 +65,16 @@ To measure local blocked-query throughput, start the resolver and run:
 PowerShell -ExecutionPolicy Bypass -File scripts\benchmark-dns.ps1 -Count 100
 ```
 
-This benchmark targets the sample blocked name, so it measures the local rule-decision path without depending on an upstream or public network. It reports total and average latency; it is a comparison tool, not a production capacity guarantee.
+This benchmark targets the sample blocked name, so it measures the local rule-decision path without depending on an upstream or public network. A successful run reports `Result`, `Queries`, `ResponseCode`, `SuccessfulQueries`, `FailedQueries`, total and average latency, and queries per second. A blocked run should show `ResponseCode: NXDOMAIN` and zero failed queries. It is a comparison tool, not a production capacity guarantee.
+
+To measure an allowed lookup through the configured upstream, use a name and expected `NOERROR` response explicitly:
+
+```powershell
+PowerShell -ExecutionPolicy Bypass -File scripts\benchmark-dns.ps1 `
+  -Name example.com -ExpectedResponseCode NOERROR -Count 100
+```
+
+The allowed benchmark depends on upstream reachability and may be slower or fail when the configured upstream is unavailable. It does not change system DNS settings.
 
 Type these commands into the resolver terminal:
 
