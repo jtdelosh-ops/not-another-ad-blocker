@@ -285,7 +285,14 @@ async fn block_allow_cache_and_client_ids_work_over_real_sockets() {
     .await;
     assert_eq!(from_tcp.id(), 21);
     assert_eq!(upstream.tcp_count.load(Ordering::SeqCst), 0);
-    assert_eq!(server.diagnostics.snapshot().outcomes["cache-hit"], 2);
+    let activity = server.diagnostics.snapshot();
+    assert_eq!(activity.outcomes["blocked"], 2);
+    assert_eq!(activity.outcomes["forwarded"], 1);
+    assert_eq!(activity.outcomes["cache-hit"], 2);
+    assert!(activity
+        .recent
+        .iter()
+        .any(|entry| entry.hostname == "child.blocked.test" && entry.outcome == "blocked"));
     server.stop().await;
 }
 

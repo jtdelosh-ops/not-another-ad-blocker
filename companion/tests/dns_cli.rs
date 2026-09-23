@@ -205,8 +205,13 @@ fn dns_cli_blocks_reports_clears_and_releases_listeners() {
         .collect();
     assert_eq!(rows[0]["event"], "starting");
     assert_eq!(rows[1]["event"], "status");
-    assert!(rows[1]["total"].as_u64().unwrap() >= 1);
+    let total = rows[1]["total"].as_u64().unwrap();
+    assert!(total >= 1);
+    assert_eq!(rows[1]["outcomes"]["blocked"].as_u64().unwrap(), total);
     assert_eq!(rows[2]["data"]["recent"][0]["hostname"], "blocked.test");
+    assert_eq!(rows[2]["data"]["recent"][0]["outcome"], "blocked");
+    assert_eq!(rows[2]["data"]["recent"][0]["source"], "user block");
+    assert_eq!(rows[2]["data"]["recent"][0]["rule"], "blocked.test");
     assert_eq!(rows[3]["event"], "activity-cleared");
     assert_eq!(rows[4]["data"]["recent"], serde_json::json!([]));
     assert_eq!(rows[5]["event"], "stopped");
