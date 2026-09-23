@@ -1,7 +1,9 @@
 param(
     [string]$Name = 'ads.example.test',
     [string]$Server = '127.0.0.1',
-    [int]$Port = 5354
+    [int]$Port = 5354,
+    [ValidateSet('NOERROR', 'SERVFAIL', 'NXDOMAIN', 'REFUSED')]
+    [string]$ExpectedResponseCode = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,7 +52,7 @@ $rcodeName = switch ($rcode) {
     default { "RCODE_$rcode" }
 }
 
-[pscustomobject]@{
+$result = [pscustomobject]@{
     Name = $Name
     Server = $Server
     Port = $Port
@@ -58,3 +60,9 @@ $rcodeName = switch ($rcode) {
     ResponseCode = $rcodeName
     Bytes = $response.Length
 }
+
+if ($ExpectedResponseCode -and $rcodeName -ne $ExpectedResponseCode) {
+    throw "Expected $ExpectedResponseCode for $Name but received $rcodeName"
+}
+
+$result

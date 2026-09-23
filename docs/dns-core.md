@@ -29,7 +29,14 @@ PowerShell -ExecutionPolicy Bypass -File scripts\test-dns.ps1 -Name ads.example.
 PowerShell -ExecutionPolicy Bypass -File scripts\test-dns.ps1 -Name example.com
 ```
 
-The sample rule blocks `ads.example.test` with **NXDOMAIN**. `example.com` should resolve through the configured upstream, assuming it is reachable. On macOS, `dig @127.0.0.1 -p 5354 example.com` is another option. With an unreachable upstream, allowed queries return **SERVFAIL**; that is different from a filter block.
+Add `-ExpectedResponseCode NXDOMAIN` or `-ExpectedResponseCode NOERROR` to make the Windows probe fail when the result is unexpected. On macOS, use the matching direct `dig` probe:
+
+```sh
+sh scripts/test-dns.sh ads.example.test NXDOMAIN
+sh scripts/test-dns.sh example.com NOERROR
+```
+
+The sample rule blocks `ads.example.test` with **NXDOMAIN**. `example.com` should resolve through the configured upstream, assuming it is reachable. The probes send packets only to the explicit loopback address and port; they do not change system DNS settings. With an unreachable upstream, allowed queries return **SERVFAIL**; that is different from a filter block.
 
 Type these commands into the resolver terminal:
 
