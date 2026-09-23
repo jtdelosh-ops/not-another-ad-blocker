@@ -61,6 +61,30 @@ fn print_pretty_report(config: &DnsConfig, report: &CompileReport) {
     println!("Ignored lines:           {}", coverage.ignored_lines);
     println!("Unsupported lines:       {}", coverage.unsupported_lines);
     println!();
+    if !report.sources.is_empty() {
+        println!("Source coverage:");
+        for source in &report.sources {
+            println!("  {}", source.name);
+            println!("    Input lines:             {}", source.lines);
+            println!("    Candidate block lines:   {}", source.blocks);
+            println!(
+                "    Unique block rules:      {}",
+                source.candidate_block_rules
+            );
+            println!(
+                "    Active block rules:      {}",
+                source.effective_block_rules
+            );
+            println!("    Allow rules:             {}", source.list_allow_rules);
+            println!(
+                "    Conservative exceptions: {} lines",
+                source.conservative_allows
+            );
+            println!("    Ignored lines:           {}", source.ignored);
+            println!("    Unsupported lines:       {}", source.unsupported);
+        }
+        println!();
+    }
     if report.diagnostics.is_empty() {
         println!("Diagnostics: none");
     } else {

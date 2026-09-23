@@ -32,6 +32,8 @@ fn dns_development_cli_checks_sample_without_listening_and_rejects_bad_arguments
     assert!(pretty_stdout.starts_with("DNS coverage report\n"));
     assert!(pretty_stdout.contains("Status: READY — list blocking active"));
     assert!(pretty_stdout.contains("Active block rules:      1"));
+    assert!(pretty_stdout.contains("Source coverage:\n  Example rules"));
+    assert!(pretty_stdout.contains("    Unique block rules:      1"));
     assert!(pretty_stdout.contains("Diagnostics:"));
     assert!(pretty_stdout.contains("this rule was omitted"));
     assert!(serde_json::from_str::<serde_json::Value>(&pretty_stdout).is_err());

@@ -1,6 +1,6 @@
 use crate::rules::{parse_rule, NormalizedRule};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -33,8 +33,11 @@ pub struct SourceReport {
     pub name: String,
     pub lines: usize,
     pub blocks: usize,
+    pub candidate_block_rules: usize,
     pub allows: usize,
+    pub list_allow_rules: usize,
     pub conservative_allows: usize,
+    pub effective_block_rules: usize,
     pub badfilters: usize,
     pub ignored: usize,
     pub unsupported: usize,
@@ -150,7 +153,14 @@ impl DnsPolicy {
                 "At most {MAX_SOURCES} DNS filter sources are supported"
             ));
         }
+        let mut source_names = HashSet::new();
         for source in sources {
+            if !source_names.insert(source.name.as_str()) {
+                return Err(format!(
+                    "Filter source names must be unique: {}",
+                    source.name
+                ));
+            }
             if source.name.trim().is_empty()
                 || source.name.len() > MAX_SOURCE_NAME_BYTES
                 || source.name.chars().any(char::is_control)
@@ -255,6 +265,29 @@ impl DnsPolicy {
         } else {
             policy.list_block.len()
         };
+        for matched in policy.list_block.values() {
+            if let Some(source) = policy
+                .report
+                .sources
+                .iter_mut()
+                .find(|source| source.name == matched.source.as_ref())
+            {
+                source.candidate_block_rules += 1;
+                if !policy.report.list_blocks_suppressed {
+                    source.effective_block_rules += 1;
+                }
+            }
+        }
+        for matched in policy.list_allow.values() {
+            if let Some(source) = policy
+                .report
+                .sources
+                .iter_mut()
+                .find(|source| source.name == matched.source.as_ref())
+            {
+                source.list_allow_rules += 1;
+            }
+        }
         policy.report.diagnostics_omitted =
             policy.report.diagnostics_total - policy.report.diagnostics.len();
         policy.report.coverage = CoverageSummary {
@@ -535,6 +568,21 @@ mod tests {
         }
         assert!(normalize_hostname(&format!("{}.test", "a".repeat(64))).is_err());
         assert!(DnsPolicy::compile(&[], &[], &["127.0.0.1".into()]).is_err());
+        assert!(DnsPolicy::compile(
+            &[
+                RuleSource {
+                    name: "duplicate".into(),
+                    text: "||one.example^".into(),
+                },
+                RuleSource {
+                    name: "duplicate".into(),
+                    text: "||two.example^".into(),
+                },
+            ],
+            &[],
+            &[],
+        )
+        .is_err());
     }
 
     #[test]
@@ -865,5 +913,38 @@ mod tests {
             3
         );
         assert_eq!(duplicate_guards.report().coverage.list_allow_rules, 1);
+
+        let sources = [
+            RuleSource {
+                name: "first list".into(),
+                text: "||first.example^\n@@||first-safe.example^".into(),
+            },
+            RuleSource {
+                name: "second list".into(),
+                text: "||second.example^\n@@||second.example/path".into(),
+            },
+        ];
+        let per_source = DnsPolicy::compile(&sources, &[], &[]).unwrap();
+        assert_eq!(per_source.report().sources[0].candidate_block_rules, 1);
+        assert_eq!(per_source.report().sources[0].effective_block_rules, 1);
+        assert_eq!(per_source.report().sources[0].list_allow_rules, 1);
+        assert_eq!(per_source.report().sources[1].candidate_block_rules, 1);
+        assert_eq!(per_source.report().sources[1].effective_block_rules, 1);
+        assert_eq!(per_source.report().sources[1].list_allow_rules, 1);
+
+        let shared_sources = [
+            RuleSource {
+                name: "first shared list".into(),
+                text: "||shared.example^\n||first-only.example^".into(),
+            },
+            RuleSource {
+                name: "second shared list".into(),
+                text: "||shared.example^\n||second-only.example^".into(),
+            },
+        ];
+        let shared = DnsPolicy::compile(&shared_sources, &[], &[]).unwrap();
+        assert_eq!(shared.report().sources[0].candidate_block_rules, 2);
+        assert_eq!(shared.report().sources[1].candidate_block_rules, 1);
+        assert_eq!(shared.report().list_block_rules, 3);
     }
 }

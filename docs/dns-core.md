@@ -20,7 +20,7 @@ To save the JSON report for later comparison:
 cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-dev -- --config companion/examples/dns-dev.json --check | Set-Content -Encoding UTF8 dns-coverage.json
 ```
 
-The first command validates configuration and prints a JSON DNS coverage report without opening a socket. Add `--pretty` for a readable summary with diagnostics; JSON remains the default for scripts. The report distinguishes candidate block lines from deduplicated candidate rules and effective rules after safety suppression. The runtime command starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
+The first command validates configuration and prints a JSON DNS coverage report without opening a socket. Add `--pretty` for a readable summary with diagnostics; JSON remains the default for scripts. The report distinguishes candidate block lines from deduplicated candidate rules and effective rules after safety suppression, and the pretty form repeats those counts for each named filter source. The runtime command starts the foreground resolver. The example listens on `127.0.0.1:5354` and explicitly chooses Cloudflare's `1.1.1.1:53` / `1.0.0.1:53` upstreams. Edit `upstreams` to use your preferred resolver before running it. There is no automatic upstream discovery in this milestone.
 
 The automated Windows `nslookup` invocation did not reach the development resolver in our test environment. Use NAAB's dependency-free PowerShell probe instead:
 
@@ -51,7 +51,7 @@ Closing stdin also stops the process. Stop and restart after changing configurat
 
 ## Configuration and rules
 
-Copy [the example configuration](../companion/examples/dns-dev.json) for your own settings. Unknown or repeated configuration fields are errors. Filter file paths are relative to the JSON file, not the terminal's working directory. The resolver reads up to two explicit UTF-8 filter files; it does not download lists. Existing cached EasyList/EasyPrivacy text may be referenced, with the compatibility limits below.
+Copy [the example configuration](../companion/examples/dns-dev.json) for your own settings. Unknown or repeated configuration fields are errors. Filter source names must be unique so per-source coverage remains attributable. Filter file paths are relative to the JSON file, not the terminal's working directory. The resolver reads up to two explicit UTF-8 filter files; it does not download lists. Existing cached EasyList/EasyPrivacy text may be referenced, with the compatibility limits below.
 
 Rules reuse NAAB's existing normalized parser. Supported DNS rules are unconditional `||domain.example^` blocks and `@@||domain.example^` exceptions. They match the exact domain and its subdomains, with label boundaries. User `allowlist` and `blocklist` entries are plain domains; case, a trailing root dot and IDNA names are normalized. Precedence is:
 
