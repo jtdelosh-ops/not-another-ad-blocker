@@ -44,7 +44,7 @@ See the [privacy model](docs/privacy-model.md) for storage locations and the bou
 
 ## Where the project stands
 
-This branch contains extension **0.4.1** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged 0.4.0 Chrome build. The user reports successful 0.4.0 picker testing on an Intel Mac running Ventura 13.3.1; broader platform coverage remains limited.
+This branch contains extension **0.4.1** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged 0.4.1 Chrome build. The user reports successful 0.4.0 picker testing on an Intel Mac running Ventura 13.3.1; broader platform coverage remains limited.
 
 Current limits include:
 
@@ -53,7 +53,7 @@ Current limits include:
 - No dedicated, reliable YouTube video-ad blocking.
 - Click-triggered popup ad tabs can still open; top-level page navigations are not blocked.
 - The basic picker uses supported class/ID selectors in the top document; changing class names can make a saved rule stop matching.
-- Chromium browsers only; Firefox, Safari, and system-wide filtering are not implemented.
+- Browser support is Chromium only. Firefox and Safari are not implemented. A source-only [Windows DNS trial](docs/windows-dns-preview.md) is available for controlled testing; everyday system-wide protection is not ready.
 
 The [Phase 1 exit review](docs/phase-1-exit-review.md) records the completed performance follow-up. Phase 2 has begun with a [local DNS core](docs/dns-core.md): explicit domain filtering, forwarding, caching and local diagnostics on a development port. System integration and usable full-list DNS compatibility remain unfinished; proxy capabilities belong to later roadmap phases.
 

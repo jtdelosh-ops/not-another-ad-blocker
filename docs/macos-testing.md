@@ -1,12 +1,12 @@
 # NAAB Mac preview — Chrome on Intel
 
-This package contains extension 0.4.0 and the Intel Mac companion 0.2.1. You do not need Node, Rust, Homebrew, or Xcode to install it. The companion downloads and compiles lists; Chrome performs the filtering.
+This package contains extension 0.4.1 and the Intel Mac companion 0.2.1. You do not need Node, Rust, Homebrew, or Xcode to install it. The companion downloads and compiles lists; Chrome performs the filtering.
 
 Use an Intel Mac and a current version of Chrome. Google's current Chrome releases require macOS 13 Ventura or newer; Ventura 13.3.1 meets that requirement. The registration helper requires macOS 12 or newer. This is a developer preview, signed locally for execution but not signed with an Apple Developer ID or notarized. The first installation on your own Mac still needs verification.
 
 ## 1. Download and put the folder somewhere permanent
 
-On your Mac, sign in to GitHub with the account that can access the private NAAB repository. Open the supplied successful Mac preview build, scroll to **Artifacts**, and download **NAAB-Mac-Preview-Intel**.
+On your Mac, sign in to GitHub with an account that can access the NAAB repository. Open a successful Mac preview build, scroll to **Artifacts**, and download **NAAB-Mac-Preview-Intel**.
 
 1. Double-click the downloaded artifact ZIP to extract it.
 2. Inside it, double-click the `.tar.gz` archive to extract **NAAB-Mac-Preview**. The extra archive preserves executable permissions.
@@ -34,7 +34,7 @@ Keep this folder in place. Moving or deleting it after installation breaks the u
 2. Turn on **Developer mode** at the upper right.
 3. Click **Load unpacked**.
 4. Select **Documents → NAAB-Mac-Preview → extension**. Select this inner folder, not the whole package.
-5. Find **Not Another Ad Blocker — Local Preview** and confirm version **0.4.0**.
+5. Find **Not Another Ad Blocker — Local Preview** and confirm version **0.4.1**.
 6. Copy the **32-character ID** shown on its card. Use the ID displayed on this Mac; it can differ from your Windows ID.
 
 ## 3. Connect the Mac companion
@@ -65,11 +65,11 @@ For a useful comparison, temporarily turn off Privacy Badger and any other conte
 
 ## Upgrade an existing Mac preview
 
-The picker update is extension **0.4.0** with unchanged companion code at **0.2.1**. Replace the package contents together so its instructions and build metadata match, keeping the installed paths:
+The current preview is extension **0.4.1** with companion **0.2.1**. Replace the package contents together so its instructions and build metadata match, keeping the installed paths:
 
 1. Download and extract the new Intel package into a temporary location. Quit Chrome completely with **Chrome → Quit Google Chrome** (or **Command-Q**).
 2. In Finder, open the existing **Documents → NAAB-Mac-Preview** folder. Replace its `extension` and `companion` folders, plus `Install.command`, `README.md`, and `BUILD-INFO.json`, with the new package's matching items so the instructions and build metadata match the installed binaries. Keep the parent folder's name and location exactly the same; avoid ending up with an extra nested `NAAB-Mac-Preview` folder.
-3. Reopen Chrome, go to `chrome://extensions`, and click **Reload** on the existing NAAB extension. Confirm **0.4.0**. Keeping the same extension folder preserves its ID and saved settings; do not remove and re-add the extension.
+3. Reopen Chrome, go to `chrome://extensions`, and click **Reload** on the existing NAAB extension. Confirm **0.4.1**. Keeping the same extension folder preserves its ID and saved settings; do not remove and re-add the extension.
 4. Open **Lists & diagnostics → Check companion** and confirm **0.2.1**. The registered executable path is unchanged, so you do not need to rerun `Install.command` or enter the extension ID again. If macOS blocks the replacement `naab-companion`, approve that named file using **System Settings → Privacy & Security → Open Anyway**, then retry the check.
 
 To try the picker, open a normal website with protection enabled, click NAAB's **Block something on this page**, select an element, and click **Preview → Save rule**. **Cancel** or **Escape** discards a preview; **Undo saved rule** removes a newly saved rule while the panel is open. Other filters remain intact. This basic picker uses supported class/ID rules in the top document; if there is no usable selector, try **Select parent**. It does not select inside embedded frames or support private tabs.

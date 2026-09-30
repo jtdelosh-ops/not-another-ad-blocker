@@ -6,5 +6,6 @@ pub mod config;
 pub mod diagnostics;
 mod resolver;
 pub mod server;
+pub mod system;
 
 pub use config::DnsConfig;

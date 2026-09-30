@@ -6,6 +6,10 @@ The native host compiles filters, downloads only the fixed EasyList/EasyPrivacy 
 
 The separate, opt-in `naab-dns-dev` executable is the first Phase 2 source milestone. It provides a loopback DNS development listener, forwarding, bounded caching, domain rules and local diagnostics. It is not launched by Native Messaging and does not change system DNS settings. See the [DNS core guide](../docs/dns-core.md) for commands, compatibility limits and privacy behavior.
 
+`naab-dns-sim` demonstrates the new activation/recovery foundation with fictional interfaces and injected health results. It writes local recovery/report files but performs no DNS requests or OS changes. See the [foundation guide](../docs/system-dns-design.md) for scenarios and implementation boundaries.
+
+`naab-dns-windows` is a [controlled-test Windows preview](../docs/windows-dns-preview.md): an ordinary-user port-53 resolver and a separate administrator helper for a five-minute DNS trial, restoration and offline recovery. Controlled VM trials have exercised rollback, including static/mixed DNS, forced helper exit and reboot recovery with the optional scheduled task. A permanent resolver service and broader network handling are not included. `naab-dns-macos` currently provides [read-only network-service discovery](../docs/macos-dns-discovery.md); it cannot change DNS.
+
 Build and verify from this directory with stable Rust:
 
 ```sh

@@ -1,10 +1,10 @@
 # DNS core development preview
 
-The next system-integration design and recovery checklist is documented in [System DNS design](system-dns-design.md); it is planning material only and does not change this development preview.
-
 NAAB's DNS core is an optional local resolver that blocks matching domain lookups before forwarding allowed queries to a chosen upstream. It extends the Rust companion project with a separate `naab-dns-dev` executable. This is the first Phase 2 milestone, available from source; it is not system-wide protection yet.
 
 The listener runs on an unprivileged loopback port, with UDP and TCP support. It changes no network settings and installs no service. The extension and its Native Messaging host continue working independently. Requests reach this resolver only when a DNS client explicitly targets its port.
+
+The separate [system-DNS foundation and offline simulator](system-dns-design.md) exercise activation, saved-state recovery and failure policy. A [Windows controlled-test preview](windows-dns-preview.md) now connects those decisions to real Windows settings and a separately supervised port-53 resolver. Controlled VM trials have exercised restoration, including boot recovery with an optional scheduled task. A permanent resolver service and broader platform validation remain unfinished.
 
 ## Try it
 
@@ -140,6 +140,6 @@ The DNS tests use loopback upstream fixtures, exercise real UDP/TCP sockets, and
 
 Verification limits: Windows `nslookup` failed to connect from the automation environment over either UDP or TCP, while the resolver recorded no requests from that client; the direct probe and socket tests succeeded. That client interoperability check remains unresolved and should be repeated in a normal terminal before treating this as ready for system integration. macOS execution of the DNS milestone is also unverified. These are development-core results, not a Phase 2 exit approval.
 
-Still ahead in Phase 2: connecting DNS controls/activity to the extension, managed process/service lifecycle, discovery of current resolvers, macOS and Windows system integration, narrowly scoped privileged operations, backup/restore, watchdog health/recovery, and platform testing. The existing Mac browser-extension package does not include this new source-only DNS preview.
+Still ahead in Phase 2: broader Windows network/VPN transition verification, permanent resolver lifecycle, extension DNS controls/activity, macOS system-DNS integration and platform testing. The existing Mac browser-extension package does not include the source-only DNS work; [read-only Mac network-service discovery](macos-dns-discovery.md) is available from source.
 
 Implementation references: [Hickory protocol library](https://docs.rs/hickory-proto/0.25.2/hickory_proto/), [DNS negative caching](https://www.rfc-editor.org/rfc/rfc2308), and [DNS over TCP](https://www.rfc-editor.org/rfc/rfc7766).
