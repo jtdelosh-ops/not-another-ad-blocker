@@ -1,8 +1,11 @@
 //! Read-only observations for a future macOS DNS trial. No observation here is
 //! a stable recovery identity or permission to alter network settings.
-#[cfg(target_os = "macos")]
-use super::macos;
 use super::macos::Service;
+#[cfg(any(test, target_os = "macos"))]
+use super::macos_identity::IdentitySnapshot;
+use super::macos_identity::ServiceIdentity;
+#[cfg(target_os = "macos")]
+use super::{macos, macos_identity};
 use serde::Serialize;
 #[cfg(target_os = "macos")]
 use std::process::Command;
@@ -16,6 +19,9 @@ pub struct Preflight {
     pub services: Vec<Service>,
     pub primary_ipv4_interface: Option<String>,
     pub primary_ipv4_service: Option<String>,
+    pub primary_ipv4_service_id: Option<String>,
+    pub current_set_id: Option<String>,
+    pub service_identities: Vec<ServiceIdentity>,
     pub default_dns_servers: Vec<String>,
     pub resolvers: Vec<Resolver>,
     pub warnings: Vec<String>,
@@ -210,7 +216,7 @@ fn preflight_with(
     let primary_ipv4_service =
         (primary_ipv4_interface.is_some() && matching.len() == 1).then(|| matching[0].name.clone());
     let mut warnings = vec![
-        "Read-only observations are not a stable service/network identity or a recovery snapshot."
+        "Service and location IDs identify configuration objects, not the current physical network or a recovery snapshot."
             .to_owned(),
         "DNS resolution can vary by domain, interface, VPN, and application; do not infer that one listed server handles every query."
             .to_owned(),
@@ -225,11 +231,42 @@ fn preflight_with(
         services,
         primary_ipv4_interface,
         primary_ipv4_service,
+        primary_ipv4_service_id: None,
+        current_set_id: None,
+        service_identities: Vec::new(),
         default_dns_servers,
         resolvers,
         warnings,
         trial_ready: false,
     })
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn attach_identities(mut report: Preflight, snapshot: IdentitySnapshot) -> Preflight {
+    if let (Some(name), Some(device)) = (
+        report.primary_ipv4_service.as_deref(),
+        report.primary_ipv4_interface.as_deref(),
+    ) {
+        let matches: Vec<_> = snapshot
+            .services
+            .iter()
+            .filter(|service| {
+                service.enabled && service.name == name && service.device.as_deref() == Some(device)
+            })
+            .collect();
+        if matches.len() == 1 {
+            report.primary_ipv4_service_id = Some(matches[0].id.clone());
+        }
+    }
+    if report.primary_ipv4_service_id.is_none() {
+        report.warnings.push(
+            "Primary IPv4 service did not map uniquely to a System Configuration service ID."
+                .to_owned(),
+        );
+    }
+    report.current_set_id = Some(snapshot.current_set_id);
+    report.service_identities = snapshot.services;
+    report
 }
 
 #[cfg(target_os = "macos")]
@@ -250,7 +287,8 @@ pub fn preflight() -> Result<Preflight, String> {
     let order = run("/usr/sbin/networksetup", &["-listnetworkserviceorder"])?;
     let dns = run("/usr/sbin/scutil", &["--dns"])?;
     let route = run("/sbin/route", &["-n", "get", "default"]).ok();
-    preflight_with(services, &order, &dns, route.as_deref())
+    let report = preflight_with(services, &order, &dns, route.as_deref())?;
+    Ok(attach_identities(report, macos_identity::inspect()?))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -330,5 +368,53 @@ mod tests {
         assert!(parse_default_route("interface: en0\ninterface: en1\n").is_err());
         assert!(parse_resolvers(&"x".repeat(MAX_OUTPUT + 1)).is_err());
         assert!(parse_resolvers("DNS configuration\nresolver #1\n  flags : \n").is_ok());
+    }
+
+    #[test]
+    fn only_matching_native_service_identity_is_selected() {
+        let report = preflight_with(
+            services(),
+            "(1) Wi-Fi\n(Hardware Port: Wi-Fi, Device: en0)\n",
+            "DNS configuration\nresolver #1\n nameserver[0] : 192.0.2.1\n",
+            Some("interface: en0\n"),
+        )
+        .unwrap();
+        let snapshot = IdentitySnapshot {
+            current_set_id: "set-123".into(),
+            services: vec![ServiceIdentity {
+                id: "service-456".into(),
+                name: "Wi-Fi".into(),
+                enabled: true,
+                device: Some("en0".into()),
+            }],
+        };
+        let matching = attach_identities(report, snapshot.clone());
+        assert_eq!(
+            matching.primary_ipv4_service_id.as_deref(),
+            Some("service-456")
+        );
+        assert_eq!(matching.current_set_id.as_deref(), Some("set-123"));
+        assert!(!matching.trial_ready);
+        let mismatched = attach_identities(
+            preflight_with(
+                services(),
+                "(1) Wi-Fi\n(Hardware Port: Wi-Fi, Device: en0)\n",
+                "DNS configuration\nresolver #1\n nameserver[0] : 192.0.2.1\n",
+                Some("interface: en0\n"),
+            )
+            .unwrap(),
+            IdentitySnapshot {
+                services: vec![ServiceIdentity {
+                    device: Some("en1".into()),
+                    ..snapshot.services[0].clone()
+                }],
+                ..snapshot
+            },
+        );
+        assert_eq!(mismatched.primary_ipv4_service_id, None);
+        assert!(mismatched
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("did not map uniquely")));
     }
 }
