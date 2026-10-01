@@ -1,6 +1,7 @@
 //! Read-only identities from macOS System Configuration. Service display names
 //! and BSD device names are diagnostics; the set/service IDs identify settings.
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +17,47 @@ pub struct ServiceIdentity {
 pub struct IdentitySnapshot {
     pub current_set_id: String,
     pub services: Vec<ServiceIdentity>,
+}
+
+/// A read-only observation of the complete DNS protocol property list. The
+/// serialized bytes are kept private so preflight does not publish search
+/// domains or other configuration values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DnsProtocolSnapshot {
+    pub current_set_id: String,
+    pub service_id: String,
+    pub protocol_present: bool,
+    pub protocol_enabled: bool,
+    pub configuration_xml: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DnsProtocolSummary {
+    pub service_id: String,
+    pub protocol_present: bool,
+    pub protocol_enabled: bool,
+    pub configuration_present: bool,
+    pub configuration_bytes: usize,
+    pub configuration_sha256: Option<String>,
+}
+
+impl DnsProtocolSnapshot {
+    pub fn summary(&self) -> DnsProtocolSummary {
+        DnsProtocolSummary {
+            service_id: self.service_id.clone(),
+            protocol_present: self.protocol_present,
+            protocol_enabled: self.protocol_enabled,
+            configuration_present: self.configuration_xml.is_some(),
+            configuration_bytes: self.configuration_xml.as_ref().map_or(0, Vec::len),
+            configuration_sha256: self.configuration_xml.as_ref().map(|xml| {
+                Sha256::digest(xml)
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect()
+            }),
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -34,6 +76,15 @@ mod native {
         fn CFArrayGetCount(array: Cf) -> isize;
         fn CFArrayGetValueAtIndex(array: Cf, index: isize) -> Cf;
         fn CFRelease(value: Cf);
+        fn CFPropertyListCreateData(
+            allocator: Cf,
+            property_list: Cf,
+            format: isize,
+            options: usize,
+            error: *mut Cf,
+        ) -> Cf;
+        fn CFDataGetLength(data: Cf) -> isize;
+        fn CFDataGetBytePtr(data: Cf) -> *const u8;
     }
 
     #[link(name = "SystemConfiguration", kind = "framework")]
@@ -47,6 +98,10 @@ mod native {
         fn SCNetworkServiceGetEnabled(service: Cf) -> u8;
         fn SCNetworkServiceGetInterface(service: Cf) -> Cf;
         fn SCNetworkInterfaceGetBSDName(interface: Cf) -> Cf;
+        fn SCNetworkServiceCopyProtocol(service: Cf, protocol_type: Cf) -> Cf;
+        fn SCNetworkProtocolGetEnabled(protocol: Cf) -> u8;
+        fn SCNetworkProtocolGetConfiguration(protocol: Cf) -> Cf;
+        static kSCNetworkProtocolTypeDNS: Cf;
     }
 
     struct Owned(Cf);
@@ -148,11 +203,125 @@ mod native {
             services,
         })
     }
+
+    pub fn inspect_dns_protocol(
+        expected_set_id: &str,
+        expected_service_id: &str,
+    ) -> Result<super::DnsProtocolSnapshot, String> {
+        let name = Owned::new(
+            unsafe {
+                CFStringCreateWithCString(
+                    ptr::null(),
+                    c"NAAB DNS read-only protocol".as_ptr(),
+                    UTF8,
+                )
+            },
+            "process name",
+        )?;
+        let preferences = Owned::new(
+            unsafe { SCPreferencesCreate(ptr::null(), name.0, ptr::null()) },
+            "preferences session",
+        )?;
+        let set = Owned::new(
+            unsafe { SCNetworkSetCopyCurrent(preferences.0) },
+            "current set",
+        )?;
+        let current_set_id = string(unsafe { SCNetworkSetGetSetID(set.0) }, "set ID")?;
+        if current_set_id != expected_set_id {
+            return Err("Mac network location changed during preflight".into());
+        }
+        let services = Owned::new(unsafe { SCNetworkSetCopyServices(set.0) }, "service list")?;
+        let count = unsafe { CFArrayGetCount(services.0) };
+        if !(0..=64).contains(&count) {
+            return Err("Too many macOS network services".into());
+        }
+        let mut selected = None;
+        for index in 0..count {
+            let service = unsafe { CFArrayGetValueAtIndex(services.0, index) };
+            if service.is_null() {
+                return Err("Missing macOS network service".into());
+            }
+            if string(
+                unsafe { SCNetworkServiceGetServiceID(service) },
+                "service ID",
+            )? == expected_service_id
+            {
+                if selected.replace(service).is_some() {
+                    return Err("Duplicate macOS service ID".into());
+                }
+            }
+        }
+        let service = selected.ok_or("Primary service disappeared during preflight")?;
+        let protocol = unsafe { SCNetworkServiceCopyProtocol(service, kSCNetworkProtocolTypeDNS) };
+        if protocol.is_null() {
+            return Ok(super::DnsProtocolSnapshot {
+                current_set_id,
+                service_id: expected_service_id.to_owned(),
+                protocol_present: false,
+                protocol_enabled: false,
+                configuration_xml: None,
+            });
+        }
+        let protocol = Owned::new(protocol, "DNS protocol")?;
+        let configuration = unsafe { SCNetworkProtocolGetConfiguration(protocol.0) };
+        let configuration_xml = if configuration.is_null() {
+            None
+        } else {
+            // XML property lists retain every key and type. Do not interpret a
+            // missing dictionary as automatic DNS: the API also returns NULL
+            // on error, so a future writer must resolve that ambiguity.
+            let data = Owned::new(
+                unsafe {
+                    CFPropertyListCreateData(
+                        ptr::null(),
+                        configuration,
+                        100, // kCFPropertyListXMLFormat_v1_0
+                        0,
+                        ptr::null_mut(),
+                    )
+                },
+                "DNS protocol property list",
+            )?;
+            let length = unsafe { CFDataGetLength(data.0) };
+            if !(0..=128 * 1024).contains(&length) {
+                return Err("Mac DNS protocol configuration is too large".into());
+            }
+            let bytes = unsafe { CFDataGetBytePtr(data.0) };
+            if bytes.is_null() && length != 0 {
+                return Err("Mac DNS protocol bytes are unavailable".into());
+            }
+            Some(if length == 0 {
+                Vec::new()
+            } else {
+                unsafe { std::slice::from_raw_parts(bytes, length as usize) }.to_vec()
+            })
+        };
+        Ok(super::DnsProtocolSnapshot {
+            current_set_id,
+            service_id: expected_service_id.to_owned(),
+            protocol_present: true,
+            protocol_enabled: unsafe { SCNetworkProtocolGetEnabled(protocol.0) } != 0,
+            configuration_xml,
+        })
+    }
 }
 
 #[cfg(target_os = "macos")]
 pub fn inspect() -> Result<IdentitySnapshot, String> {
     native::inspect()
+}
+
+#[cfg(target_os = "macos")]
+pub fn inspect_dns_protocol(
+    expected_set_id: &str,
+    expected_service_id: &str,
+) -> Result<DnsProtocolSnapshot, String> {
+    native::inspect_dns_protocol(expected_set_id, expected_service_id)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn inspect_dns_protocol(_: &str, _: &str) -> Result<DnsProtocolSnapshot, String> {
+    Err("Mac DNS protocol inspection is available only on macOS".into())
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -170,5 +339,30 @@ mod tests {
             .services
             .iter()
             .all(|service| !service.id.is_empty()));
+        if let Some(service) = snapshot.services.iter().find(|service| service.enabled) {
+            let dns = super::inspect_dns_protocol(&snapshot.current_set_id, &service.id)
+                .expect("read macOS DNS protocol without elevation");
+            assert_eq!(dns.service_id, service.id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use super::DnsProtocolSnapshot;
+
+    #[test]
+    fn summary_does_not_expose_protocol_values() {
+        let snapshot = DnsProtocolSnapshot {
+            current_set_id: "set".into(),
+            service_id: "service".into(),
+            protocol_present: true,
+            protocol_enabled: true,
+            configuration_xml: Some(b"secret search domain".to_vec()),
+        };
+        let json = serde_json::to_string(&snapshot.summary()).unwrap();
+        assert!(!json.contains("secret"));
+        assert!(json.contains("configurationSha256"));
+        assert!(json.contains("configurationBytes"));
     }
 }

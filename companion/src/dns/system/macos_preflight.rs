@@ -1,6 +1,7 @@
 //! Read-only observations for a future macOS DNS trial. No observation here is
 //! a stable recovery identity or permission to alter network settings.
 use super::macos::Service;
+use super::macos_identity::DnsProtocolSummary;
 #[cfg(any(test, target_os = "macos"))]
 use super::macos_identity::IdentitySnapshot;
 use super::macos_identity::ServiceIdentity;
@@ -22,6 +23,7 @@ pub struct Preflight {
     pub primary_ipv4_service_id: Option<String>,
     pub current_set_id: Option<String>,
     pub service_identities: Vec<ServiceIdentity>,
+    pub primary_service_dns_protocol: Option<DnsProtocolSummary>,
     pub default_dns_servers: Vec<String>,
     pub resolvers: Vec<Resolver>,
     pub warnings: Vec<String>,
@@ -234,6 +236,7 @@ fn preflight_with(
         primary_ipv4_service_id: None,
         current_set_id: None,
         service_identities: Vec::new(),
+        primary_service_dns_protocol: None,
         default_dns_servers,
         resolvers,
         warnings,
@@ -288,7 +291,28 @@ pub fn preflight() -> Result<Preflight, String> {
     let dns = run("/usr/sbin/scutil", &["--dns"])?;
     let route = run("/sbin/route", &["-n", "get", "default"]).ok();
     let report = preflight_with(services, &order, &dns, route.as_deref())?;
-    Ok(attach_identities(report, macos_identity::inspect()?))
+    let mut report = attach_identities(report, macos_identity::inspect()?);
+    if let (Some(set_id), Some(service_id)) = (
+        report.current_set_id.as_deref(),
+        report.primary_ipv4_service_id.as_deref(),
+    ) {
+        match macos_identity::inspect_dns_protocol(set_id, service_id) {
+            Ok(snapshot) => {
+                if !snapshot.protocol_present || snapshot.configuration_xml.is_none() {
+                    report.warnings.push(
+                        "Mac DNS protocol or configuration is absent or unreadable; automatic mode cannot be inferred."
+                            .to_owned(),
+                    );
+                }
+                report.primary_service_dns_protocol = Some(snapshot.summary());
+            }
+            Err(_) => report.warnings.push(
+                "Primary service DNS protocol could not be read exactly; no settings change is permitted."
+                    .to_owned(),
+            ),
+        }
+    }
+    Ok(report)
 }
 
 #[cfg(not(target_os = "macos"))]

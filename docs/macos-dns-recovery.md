@@ -16,4 +16,4 @@ The helper's restore path must verify the saved location ID, service ID, network
 
 The record and its directory need ownership and permission checks before a privileged helper trusts them. Installation, uninstall, and upgrade must leave a usable offline recovery command. The helper must be exercised on an isolated Mac or VM through normal completion, resolver failure, forced termination, reboot, sleep/wake, Wi-Fi change, VPN activation, static DNS, and interrupted writes before a system-DNS trial is offered on an everyday Mac.
 
-**Current status:** the persistent configuration IDs are read-only observations. Network-context identity, exact DNS-protocol snapshot, privileged helper, `launchd` recovery, and real restore tests are not implemented. `trialReady` remains false.
+**Current status:** the persistent configuration IDs and full DNS-protocol property list are read-only observations. The property list is not yet validated for safe mutation or saved in a durable recovery journal. Network-context identity, privileged helper, `launchd` recovery, and real restore tests are not implemented. `trialReady` remains false.
