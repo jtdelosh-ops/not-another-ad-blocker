@@ -5,6 +5,7 @@
 pub mod health;
 pub mod journal;
 pub mod macos;
+pub mod macos_preflight;
 pub mod simulation;
 pub mod trial;
 pub mod windows;

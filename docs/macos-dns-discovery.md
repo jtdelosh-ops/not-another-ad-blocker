@@ -10,4 +10,16 @@ The command lists macOS network services, whether each is enabled, and DNS serve
 
 This output is an inventory, not a safe restoration snapshot. A display name is not a stable service ID, and the output does not establish which service or resolver currently handles a query. The system DNS controller is not connected to this Mac module. There is no `trial`, `apply`, or `recover` Mac command yet. A future guarded trial needs stable service and network identity, effective resolver/policy checks, a recovery helper, and live Mac verification before any DNS change.
 
-The parser rejects unrecognized or localized output instead of guessing whether an unknown response means automatic DNS. Fixture tests run on other operating systems, but the command itself must still be checked on a Mac before treating its output as complete.
+The parser rejects unrecognized or localized output instead of guessing whether an unknown response means automatic DNS. Fixture tests run on other operating systems. On October 1, 2026, the user ran `inspect` on an Intel Mac and reported Wi-Fi, iPhone USB, and Thunderbolt Bridge as enabled, each with `configuredDns: null`. That establishes one live inventory result, not the effective resolver or broader Mac compatibility.
+
+## Read-only preflight
+
+On the Mac, from the repository root, run:
+
+```sh
+cargo run --locked --manifest-path companion/Cargo.toml --bin naab-dns-macos -- preflight
+```
+
+This combines the service inventory with the primary IPv4 route (`route -n get default`), service-to-device order (`networksetup -listnetworkserviceorder`), and effective resolver entries (`scutil --dns`). `defaultDnsServers` copies the first resolver in the ordinary DNS section; `resolvers` also preserves supplemental and scoped entries as macOS reports them. A route interface is mapped to a service only when exactly one enabled service has that device. The output may include private DNS addresses or search domains; review it before sharing.
+
+`trialReady` is always `false`: the route is only an IPv4 observation, resolver selection can vary by domain, interface, VPN, or application, and no stable service/network recovery identity has been established. This command neither changes DNS nor makes the existing system-DNS controller available on Mac. The next work is to validate this output on a real Mac and design stable identities and offline recovery before any guarded activation.
