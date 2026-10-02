@@ -21,7 +21,8 @@ type Reply = unsafe extern "C" fn(
     *mut c_void,
 );
 
-#[link(name = "dns_sd")]
+// Apple's Clients/Makefile documents that these functions are re-exported by
+// libSystem on macOS, which Rust already links. -ldns_sd is for other platforms.
 unsafe extern "C" {
     fn DNSServiceQueryRecord(
         service: *mut Service,
