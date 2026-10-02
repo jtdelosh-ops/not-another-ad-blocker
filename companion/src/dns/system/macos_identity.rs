@@ -29,6 +29,9 @@ pub struct DnsProtocolSnapshot {
     pub protocol_present: bool,
     pub protocol_enabled: bool,
     pub configuration_xml: Option<Vec<u8>>,
+    /// System Configuration's status immediately after a NULL configuration
+    /// result. None when a dictionary was returned.
+    pub null_configuration_status: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -40,6 +43,7 @@ pub struct DnsProtocolSummary {
     pub configuration_present: bool,
     pub configuration_bytes: usize,
     pub configuration_sha256: Option<String>,
+    pub null_configuration_status: Option<i32>,
 }
 
 impl DnsProtocolSnapshot {
@@ -56,6 +60,7 @@ impl DnsProtocolSnapshot {
                     .map(|byte| format!("{byte:02x}"))
                     .collect()
             }),
+            null_configuration_status: self.null_configuration_status,
         }
     }
 }
@@ -101,6 +106,7 @@ mod native {
         fn SCNetworkServiceCopyProtocol(service: Cf, protocol_type: Cf) -> Cf;
         fn SCNetworkProtocolGetEnabled(protocol: Cf) -> u8;
         fn SCNetworkProtocolGetConfiguration(protocol: Cf) -> Cf;
+        fn SCError() -> i32;
         static kSCNetworkProtocolTypeDNS: Cf;
     }
 
@@ -260,10 +266,12 @@ mod native {
                 protocol_present: false,
                 protocol_enabled: false,
                 configuration_xml: None,
+                null_configuration_status: None,
             });
         }
         let protocol = Owned::new(protocol, "DNS protocol")?;
         let configuration = unsafe { SCNetworkProtocolGetConfiguration(protocol.0) };
+        let null_configuration_status = configuration.is_null().then(|| unsafe { SCError() });
         let configuration_xml = if configuration.is_null() {
             None
         } else {
@@ -302,6 +310,7 @@ mod native {
             protocol_present: true,
             protocol_enabled: unsafe { SCNetworkProtocolGetEnabled(protocol.0) } != 0,
             configuration_xml,
+            null_configuration_status,
         })
     }
 }
@@ -359,10 +368,26 @@ mod summary_tests {
             protocol_present: true,
             protocol_enabled: true,
             configuration_xml: Some(b"secret search domain".to_vec()),
+            null_configuration_status: None,
         };
         let json = serde_json::to_string(&snapshot.summary()).unwrap();
         assert!(!json.contains("secret"));
         assert!(json.contains("configurationSha256"));
         assert!(json.contains("configurationBytes"));
+    }
+
+    #[test]
+    fn null_configuration_keeps_diagnostic_status_without_inferred_mode() {
+        let snapshot = DnsProtocolSnapshot {
+            current_set_id: "set".into(),
+            service_id: "service".into(),
+            protocol_present: true,
+            protocol_enabled: true,
+            configuration_xml: None,
+            null_configuration_status: Some(0),
+        };
+        let summary = snapshot.summary();
+        assert!(!summary.configuration_present);
+        assert_eq!(summary.null_configuration_status, Some(0));
     }
 }
