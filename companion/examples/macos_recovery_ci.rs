@@ -91,6 +91,11 @@ mod live {
 
     fn capture() -> Result<Record, String> {
         let preflight = macos_preflight::preflight()?;
+        eprintln!(
+            "Runner primary DNS protocol: {}",
+            serde_json::to_string(&preflight.primary_service_dns_protocol)
+                .map_err(|e| e.to_string())?
+        );
         let device = preflight
             .primary_ipv4_interface
             .ok_or("Missing primary interface")?;
