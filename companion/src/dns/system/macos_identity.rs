@@ -98,7 +98,7 @@ impl DnsProtocolSnapshot {
 #[cfg(target_os = "macos")]
 mod native {
     use super::{IdentitySnapshot, ServiceIdentity};
-    use std::ffi::{c_char, c_void, CStr};
+    use std::ffi::{c_char, c_void, CStr, CString};
     use std::ptr;
 
     type Cf = *const c_void;
@@ -146,14 +146,15 @@ mod native {
         fn SCNetworkInterfaceGetBSDName(interface: Cf) -> Cf;
         fn SCNetworkServiceCopyProtocol(service: Cf, protocol_type: Cf) -> Cf;
         fn SCNetworkProtocolGetEnabled(protocol: Cf) -> u8;
-        fn SCNetworkProtocolGetConfiguration(protocol: Cf) -> Cf;
         fn SCNetworkProtocolSetConfiguration(protocol: Cf, configuration: Cf) -> u8;
         fn SCNetworkProtocolSetEnabled(protocol: Cf, enabled: u8) -> u8;
+        fn SCPreferencesPathGetValue(preferences: Cf, path: Cf) -> Cf;
+        #[cfg(test)]
+        fn SCPreferencesPathSetValue(preferences: Cf, path: Cf, value: Cf) -> u8;
         fn SCPreferencesLock(preferences: Cf, wait: u8) -> u8;
         fn SCPreferencesUnlock(preferences: Cf) -> u8;
         fn SCPreferencesCommitChanges(preferences: Cf) -> u8;
         fn SCPreferencesApplyChanges(preferences: Cf) -> u8;
-        fn SCError() -> i32;
         static kSCNetworkProtocolTypeDNS: Cf;
     }
 
@@ -174,6 +175,38 @@ mod native {
             // Every value wrapped here is returned by a Create/Copy function.
             unsafe { CFRelease(self.0) }
         }
+    }
+
+    fn dns_preferences_path(service_id: &str) -> Result<Owned, String> {
+        // This path is the service's own DNS entity, not the effective resolver
+        // policy. Restrict the ID to one path component before constructing it.
+        if service_id.is_empty()
+            || service_id.len() > 256
+            || !service_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            return Err("Invalid Mac DNS service ID for preferences path".into());
+        }
+        let text = CString::new(format!("/NetworkServices/{service_id}/DNS"))
+            .map_err(|e| e.to_string())?;
+        Owned::new(
+            unsafe { CFStringCreateWithCString(ptr::null(), text.as_ptr(), UTF8) },
+            "DNS preferences path",
+        )
+    }
+
+    fn stored_dns_dictionary(preferences: Cf, path: Cf) -> Result<Cf, String> {
+        // SCNetworkProtocolGetConfiguration hides empty and __INACTIVE__-only
+        // dictionaries as NULL without resetting SCError. Read the actual
+        // entity from this same session so those states round-trip exactly.
+        // A DNS protocol object has already established that its entity exists;
+        // a missing/non-dictionary raw value is not an automatic-mode signal.
+        let value = unsafe { SCPreferencesPathGetValue(preferences, path) };
+        if value.is_null() || unsafe { CFGetTypeID(value) != CFDictionaryGetTypeID() } {
+            return Err("Stored Mac DNS entity is missing or is not a dictionary".into());
+        }
+        Ok(value)
     }
 
     fn string(value: Cf, what: &str) -> Result<String, String> {
@@ -317,14 +350,12 @@ mod native {
             });
         }
         let protocol = Owned::new(protocol, "DNS protocol")?;
-        let configuration = unsafe { SCNetworkProtocolGetConfiguration(protocol.0) };
-        let null_configuration_status = configuration.is_null().then(|| unsafe { SCError() });
-        let configuration_xml = if configuration.is_null() {
-            None
-        } else {
-            // XML property lists retain every key and type. Do not interpret a
-            // missing dictionary as automatic DNS: the API also returns NULL
-            // on error, so a future writer must resolve that ambiguity.
+        let path = dns_preferences_path(expected_service_id)?;
+        let configuration = stored_dns_dictionary(preferences.0, path.0)?;
+        let configuration_xml = {
+            // XML retains every stored key and type, including a zero-key
+            // dictionary. NULL was rejected above rather than classified from
+            // an error status that a higher-level getter may have left stale.
             let data = Owned::new(
                 unsafe {
                     CFPropertyListCreateData(
@@ -357,7 +388,7 @@ mod native {
             protocol_present: true,
             protocol_enabled: unsafe { SCNetworkProtocolGetEnabled(protocol.0) } != 0,
             configuration_xml,
-            null_configuration_status,
+            null_configuration_status: None,
         })
     }
 
@@ -467,25 +498,29 @@ mod native {
         if (unsafe { SCNetworkProtocolGetEnabled(protocol.0) } != 0) != record.applied.enabled {
             return Err("Mac DNS protocol enabled state changed".into());
         }
-        let current = unsafe { SCNetworkProtocolGetConfiguration(protocol.0) };
-        let status = current.is_null().then(|| unsafe { SCError() });
+        let path = dns_preferences_path(&record.service_id)?;
+        let current = stored_dns_dictionary(preferences.0, path.0)?;
         let current_matches_applied = match &record.applied.configuration {
-            Configuration::Saved(xml) if !current.is_null() => {
+            Configuration::Saved(xml) => {
                 let expected = parse_dns_dictionary(xml)?;
                 unsafe { CFEqual(current, expected.0) != 0 }
             }
-            Configuration::NoSavedConfiguration => status == Some(1004),
-            _ => false,
+            Configuration::NoSavedConfiguration => false,
         };
         if !current_matches_applied || !verify_context()? {
             return Err("Mac DNS setting or network context changed before restore".into());
         }
         let original = match &record.original.configuration {
-            Configuration::Saved(xml) => Some(parse_dns_dictionary(xml)?),
-            Configuration::NoSavedConfiguration => None,
+            Configuration::Saved(xml) => parse_dns_dictionary(xml)?,
+            // Earlier read-only observations inferred this from SCError after
+            // a NULL high-level getter. They do not identify an exact raw
+            // dictionary, so never guess a replacement for a legacy record.
+            Configuration::NoSavedConfiguration => return Err(
+                "Mac DNS record lacks an exact saved dictionary; retain it for manual attention"
+                    .into(),
+            ),
         };
-        let replacement = original.as_ref().map_or(ptr::null(), |value| value.0);
-        if unsafe { SCNetworkProtocolSetConfiguration(protocol.0, replacement) } == 0 {
+        if unsafe { SCNetworkProtocolSetConfiguration(protocol.0, original.0) } == 0 {
             return Err("Could not restore Mac DNS configuration".into());
         }
         if unsafe { SCNetworkProtocolSetEnabled(protocol.0, record.original.enabled as u8) } == 0 {
@@ -515,6 +550,65 @@ mod native {
             return Err("Could not apply current Mac DNS preferences".into());
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod raw_dictionary_tests {
+        use super::*;
+
+        #[test]
+        fn raw_reader_preserves_empty_and_inactive_only_dictionaries() {
+            let name = Owned::new(
+                unsafe {
+                    CFStringCreateWithCString(
+                        ptr::null(),
+                        c"NAAB isolated preferences test".as_ptr(),
+                        UTF8,
+                    )
+                },
+                "test name",
+            )
+            .unwrap();
+            let temp = std::env::temp_dir()
+                .join(format!("naab-prefs-{:032x}.plist", rand::random::<u128>()));
+            let text = CString::new(temp.to_str().unwrap()).unwrap();
+            let prefs_id = Owned::new(
+                unsafe { CFStringCreateWithCString(ptr::null(), text.as_ptr(), UTF8) },
+                "temporary preferences ID",
+            )
+            .unwrap();
+            let preferences = Owned::new(
+                unsafe { SCPreferencesCreate(ptr::null(), name.0, prefs_id.0) },
+                "isolated preferences",
+            )
+            .unwrap();
+            let path = dns_preferences_path("test-service").unwrap();
+            assert!(stored_dns_dictionary(preferences.0, path.0).is_err());
+            for xml in [
+                b"<plist version=\"1.0\"><dict/></plist>".as_slice(),
+                b"<plist version=\"1.0\"><dict><key>__INACTIVE__</key><true/></dict></plist>"
+                    .as_slice(),
+            ] {
+                let dictionary = parse_dns_dictionary(xml).unwrap();
+                assert_ne!(
+                    unsafe { SCPreferencesPathSetValue(preferences.0, path.0, dictionary.0) },
+                    0
+                );
+                let observed = stored_dns_dictionary(preferences.0, path.0).unwrap();
+                assert_ne!(unsafe { CFEqual(observed, dictionary.0) }, 0);
+            }
+            // Only this temporary preferences session was staged in memory.
+            // Never commit/apply it or touch the machine's default preferences.
+            assert!(!temp.exists());
+        }
+
+        #[test]
+        fn dns_path_refuses_component_injection() {
+            for id in ["", "service/DNS", "..", "service\n", "a_b"] {
+                assert!(dns_preferences_path(id).is_err());
+            }
+            assert!(dns_preferences_path("B5C93778-3495-42F2-A13D-5867772ABF14").is_ok());
+        }
     }
 }
 
