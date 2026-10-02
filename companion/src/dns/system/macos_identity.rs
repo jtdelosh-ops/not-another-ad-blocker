@@ -40,18 +40,48 @@ pub struct DnsProtocolSummary {
     pub service_id: String,
     pub protocol_present: bool,
     pub protocol_enabled: bool,
+    pub configuration_state: DnsConfigurationState,
     pub configuration_present: bool,
     pub configuration_bytes: usize,
     pub configuration_sha256: Option<String>,
     pub null_configuration_status: Option<i32>,
 }
 
+/// Describes the saved service setting, not the effective resolver or whether
+/// changing DNS would be safe. A null result has several possible causes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DnsConfigurationState {
+    Saved,
+    NoSavedConfiguration,
+    Unknown,
+}
+
+const SC_STATUS_NO_KEY: i32 = 1004;
+
 impl DnsProtocolSnapshot {
+    pub fn configuration_state(&self) -> DnsConfigurationState {
+        if !self.protocol_present {
+            // SCNetworkServiceCopyProtocol can return NULL for an absent
+            // protocol or an error. A NULL observation alone is inconclusive.
+            DnsConfigurationState::Unknown
+        } else if self.configuration_xml.is_some() {
+            DnsConfigurationState::Saved
+        } else if self.null_configuration_status == Some(SC_STATUS_NO_KEY) {
+            // Apple's kSCStatusNoKey means the DNS configuration key is absent.
+            // It does not describe DNS supplied by DHCP, VPN, or other policy.
+            DnsConfigurationState::NoSavedConfiguration
+        } else {
+            DnsConfigurationState::Unknown
+        }
+    }
+
     pub fn summary(&self) -> DnsProtocolSummary {
         DnsProtocolSummary {
             service_id: self.service_id.clone(),
             protocol_present: self.protocol_present,
             protocol_enabled: self.protocol_enabled,
+            configuration_state: self.configuration_state(),
             configuration_present: self.configuration_xml.is_some(),
             configuration_bytes: self.configuration_xml.as_ref().map_or(0, Vec::len),
             configuration_sha256: self.configuration_xml.as_ref().map(|xml| {
@@ -421,7 +451,7 @@ mod tests {
 
 #[cfg(test)]
 mod summary_tests {
-    use super::DnsProtocolSnapshot;
+    use super::{DnsConfigurationState, DnsProtocolSnapshot};
 
     #[test]
     fn summary_does_not_expose_protocol_values() {
@@ -437,6 +467,7 @@ mod summary_tests {
         assert!(!json.contains("secret"));
         assert!(json.contains("configurationSha256"));
         assert!(json.contains("configurationBytes"));
+        assert_eq!(snapshot.configuration_state(), DnsConfigurationState::Saved);
     }
 
     #[test]
@@ -452,5 +483,36 @@ mod summary_tests {
         let summary = snapshot.summary();
         assert!(!summary.configuration_present);
         assert_eq!(summary.null_configuration_status, Some(0));
+        assert_eq!(summary.configuration_state, DnsConfigurationState::Unknown);
+    }
+
+    #[test]
+    fn no_key_identifies_absent_saved_configuration_only() {
+        let mut snapshot = DnsProtocolSnapshot {
+            current_set_id: "set".into(),
+            service_id: "service".into(),
+            protocol_present: true,
+            protocol_enabled: true,
+            configuration_xml: None,
+            null_configuration_status: Some(1004),
+        };
+        assert_eq!(
+            snapshot.configuration_state(),
+            DnsConfigurationState::NoSavedConfiguration
+        );
+        assert!(serde_json::to_string(&snapshot.summary())
+            .unwrap()
+            .contains("\"configurationState\":\"noSavedConfiguration\""));
+
+        snapshot.null_configuration_status = Some(1003);
+        assert_eq!(
+            snapshot.configuration_state(),
+            DnsConfigurationState::Unknown
+        );
+        snapshot.protocol_present = false;
+        assert_eq!(
+            snapshot.configuration_state(),
+            DnsConfigurationState::Unknown
+        );
     }
 }

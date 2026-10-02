@@ -1,6 +1,8 @@
 //! Read-only observations for a future macOS DNS trial. No observation here is
 //! a stable recovery identity or permission to alter network settings.
 use super::macos::Service;
+#[cfg(target_os = "macos")]
+use super::macos_identity::DnsConfigurationState;
 use super::macos_identity::DnsProtocolSummary;
 #[cfg(any(test, target_os = "macos"))]
 use super::macos_identity::IdentitySnapshot;
@@ -317,11 +319,18 @@ pub fn preflight() -> Result<Preflight, String> {
     ) {
         match macos_identity::inspect_dns_protocol(set_id, service_id) {
             Ok(snapshot) => {
-                if !snapshot.protocol_present || snapshot.configuration_xml.is_none() {
-                    report.warnings.push(
-                        "Mac DNS protocol or configuration is absent or unreadable; automatic mode cannot be inferred."
+                match snapshot.configuration_state() {
+                    DnsConfigurationState::NoSavedConfiguration => report.warnings.push(
+                        "The primary service has no saved DNS configuration. Effective DNS may come from DHCP or another resolver; this is not a recovery snapshot."
                             .to_owned(),
-                    );
+                    ),
+                    DnsConfigurationState::Unknown => {
+                        report.warnings.push(
+                            "Mac DNS protocol or configuration is absent or unreadable; its saved setting cannot be classified."
+                                .to_owned(),
+                        );
+                    }
+                    DnsConfigurationState::Saved => {}
                 }
                 report.primary_service_dns_protocol = Some(snapshot.summary());
             }
