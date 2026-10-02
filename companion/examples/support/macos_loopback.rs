@@ -269,7 +269,7 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
         "PASS: unprivileged resolver forwarded A queries over IPv4/IPv6 UDP/TCP before activation"
     );
     let mut store = live::open_store()?;
-    let result = (|| {
+    let result: Result<(), String> = (|| {
         live::activate(&mut store, &record)?;
         let started = Instant::now();
         let guard = |resolver: &mut Holder| {
