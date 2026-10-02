@@ -90,6 +90,17 @@ mod native {
         ) -> Cf;
         fn CFDataGetLength(data: Cf) -> isize;
         fn CFDataGetBytePtr(data: Cf) -> *const u8;
+        fn CFDataCreate(allocator: Cf, bytes: *const u8, length: isize) -> Cf;
+        fn CFPropertyListCreateWithData(
+            allocator: Cf,
+            data: Cf,
+            options: usize,
+            format: *mut isize,
+            error: *mut Cf,
+        ) -> Cf;
+        fn CFGetTypeID(value: Cf) -> usize;
+        fn CFDictionaryGetTypeID() -> usize;
+        fn CFEqual(left: Cf, right: Cf) -> u8;
     }
 
     #[link(name = "SystemConfiguration", kind = "framework")]
@@ -313,6 +324,38 @@ mod native {
             null_configuration_status,
         })
     }
+
+    fn parse_dns_dictionary(xml: &[u8]) -> Result<Owned, String> {
+        if xml.is_empty() || xml.len() > 128 * 1024 {
+            return Err("Invalid Mac DNS protocol property-list length".into());
+        }
+        let data = Owned::new(
+            unsafe { CFDataCreate(ptr::null(), xml.as_ptr(), xml.len() as isize) },
+            "DNS protocol data",
+        )?;
+        let value = Owned::new(
+            unsafe {
+                CFPropertyListCreateWithData(
+                    ptr::null(),
+                    data.0,
+                    0,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                )
+            },
+            "DNS protocol property list",
+        )?;
+        if unsafe { CFGetTypeID(value.0) } != unsafe { CFDictionaryGetTypeID() } {
+            return Err("Mac DNS protocol property list is not a dictionary".into());
+        }
+        Ok(value)
+    }
+
+    pub fn equivalent_dns_configuration(left: &[u8], right: &[u8]) -> Result<bool, String> {
+        let left = parse_dns_dictionary(left)?;
+        let right = parse_dns_dictionary(right)?;
+        Ok(unsafe { CFEqual(left.0, right.0) } != 0)
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -331,6 +374,18 @@ pub fn inspect_dns_protocol(
 #[cfg(not(target_os = "macos"))]
 pub fn inspect_dns_protocol(_: &str, _: &str) -> Result<DnsProtocolSnapshot, String> {
     Err("Mac DNS protocol inspection is available only on macOS".into())
+}
+
+/// Compare complete native DNS dictionaries by value, not serialized byte order.
+/// A null configuration must be classified separately before it is comparable.
+#[cfg(target_os = "macos")]
+pub fn equivalent_dns_configuration(left: &[u8], right: &[u8]) -> Result<bool, String> {
+    native::equivalent_dns_configuration(left, right)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn equivalent_dns_configuration(_: &[u8], _: &[u8]) -> Result<bool, String> {
+    Err("Mac DNS protocol comparison is available only on macOS".into())
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -353,6 +408,14 @@ mod tests {
                 .expect("read macOS DNS protocol without elevation");
             assert_eq!(dns.service_id, service.id);
         }
+    }
+
+    #[test]
+    fn protocol_dictionary_comparison_ignores_xml_key_order() {
+        let left = br#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>ServerAddresses</key><array><string>192.0.2.1</string></array><key>SearchDomains</key><array><string>example.test</string></array></dict></plist>"#;
+        let right = br#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>SearchDomains</key><array><string>example.test</string></array><key>ServerAddresses</key><array><string>192.0.2.1</string></array></dict></plist>"#;
+        assert!(super::equivalent_dns_configuration(left, right).unwrap());
+        assert!(super::equivalent_dns_configuration(left, b"not a plist").is_err());
     }
 }
 
