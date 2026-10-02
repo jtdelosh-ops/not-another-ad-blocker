@@ -187,9 +187,9 @@ async fn forwarded_a(destination: SocketAddr, tcp: bool) -> Result<(), String> {
             reply
         } else {
             let local = if destination.is_ipv4() {
-                "127.0.0.1:0"
+                "0.0.0.0:0"
             } else {
-                "[::1]:0"
+                "[::]:0"
             };
             let socket = tokio::net::UdpSocket::bind(local).await?;
             socket.connect(destination).await?;
@@ -216,7 +216,11 @@ async fn forwarded_a(destination: SocketAddr, tcp: bool) -> Result<(), String> {
             .iter()
             .any(|answer| matches!(answer.data(), RData::A(_)))
     {
-        return Err("Loopback resolver did not forward a successful matching A answer".into());
+        return Err(format!(
+            "DNS A probe failed: destination={destination}, tcp={tcp}, code={:?}, answers={}, truncated={}, idMatch={}, questionMatch={}, type={:?}",
+            reply.response_code(), reply.answers().len(), reply.truncated(),
+            reply.id() == query.id(), reply.queries() == query.queries(), reply.message_type()
+        ));
     }
     Ok(())
 }
@@ -228,6 +232,14 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
     }
     record.applied.configuration = Configuration::Saved(br#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>ServerAddresses</key><array><string>127.0.0.1</string><string>::1</string></array></dict></plist>"#.to_vec());
     record.validate()?;
+    // Establish whether the captured runner DNS can answer before diagnosing
+    // the separate resolver. This probe never uses or changes system DNS.
+    let baseline_runtime = runtime()?;
+    for upstream in &upstreams {
+        println!("Baseline explicit upstream A probe: {upstream}");
+        baseline_runtime.block_on(forwarded_a(*upstream, false))?;
+    }
+    drop(baseline_runtime);
     let token = format!("{:032x}", rand::random::<u128>());
     let forwarded_name = format!("naab-ci-{:032x}.example.com.", rand::random::<u128>());
     let mut resolver = Holder(
