@@ -24,6 +24,7 @@ pub struct Preflight {
     pub current_set_id: Option<String>,
     pub service_identities: Vec<ServiceIdentity>,
     pub primary_service_dns_protocol: Option<DnsProtocolSummary>,
+    pub other_services_with_configured_dns: Vec<String>,
     pub default_dns_servers: Vec<String>,
     pub resolvers: Vec<Resolver>,
     pub warnings: Vec<String>,
@@ -217,6 +218,17 @@ fn preflight_with(
         .collect();
     let primary_ipv4_service =
         (primary_ipv4_interface.is_some() && matching.len() == 1).then(|| matching[0].name.clone());
+    let other_services_with_configured_dns: Vec<_> = primary_ipv4_service
+        .as_deref()
+        .map(|primary| {
+            services
+                .iter()
+                .filter(|service| service.enabled && service.configured_dns.is_some())
+                .filter(|service| service.name != primary)
+                .map(|service| service.name.clone())
+                .collect()
+        })
+        .unwrap_or_default();
     let mut warnings = vec![
         "Service and location IDs identify configuration objects, not the current physical network or a recovery snapshot."
             .to_owned(),
@@ -229,6 +241,12 @@ fn preflight_with(
     if resolvers.is_empty() || resolvers.iter().all(|entry| entry.nameservers.is_empty()) {
         warnings.push("No usable nameserver was shown by scutil --dns.".to_owned());
     }
+    if !other_services_with_configured_dns.is_empty() {
+        warnings.push(
+            "Other enabled network services also have explicitly configured DNS; a network utility or service change may control these settings."
+                .to_owned(),
+        );
+    }
     Ok(Preflight {
         services,
         primary_ipv4_interface,
@@ -237,6 +255,7 @@ fn preflight_with(
         current_set_id: None,
         service_identities: Vec::new(),
         primary_service_dns_protocol: None,
+        other_services_with_configured_dns,
         default_dns_servers,
         resolvers,
         warnings,
@@ -440,5 +459,56 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("did not map uniquely")));
+    }
+
+    #[test]
+    fn notes_explicit_dns_on_other_enabled_services() {
+        let report = preflight_with(
+            vec![
+                Service {
+                    name: "Wi-Fi".into(),
+                    enabled: true,
+                    configured_dns: Some(vec!["192.0.2.1".parse().unwrap()]),
+                },
+                Service {
+                    name: "iPhone USB".into(),
+                    enabled: true,
+                    configured_dns: Some(vec!["192.0.2.1".parse().unwrap()]),
+                },
+                Service {
+                    name: "Disabled Bridge".into(),
+                    enabled: false,
+                    configured_dns: Some(vec!["192.0.2.1".parse().unwrap()]),
+                },
+            ],
+            "(1) Wi-Fi\n(Hardware Port: Wi-Fi, Device: en0)\n(2) iPhone USB\n(Hardware Port: iPhone USB, Device: en5)\n",
+            "DNS configuration\nresolver #1\n nameserver[0] : 192.0.2.1\n",
+            Some("interface: en0\n"),
+        )
+        .unwrap();
+        assert_eq!(report.other_services_with_configured_dns, ["iPhone USB"]);
+        assert!(report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Other enabled network services")));
+        assert!(!report.trial_ready);
+    }
+
+    #[test]
+    fn does_not_call_services_other_when_primary_is_unknown() {
+        let report = preflight_with(
+            vec![Service {
+                name: "Wi-Fi".into(),
+                enabled: true,
+                configured_dns: Some(vec!["192.0.2.1".parse().unwrap()]),
+            }],
+            "(1) Wi-Fi\n(Hardware Port: Wi-Fi, Device: en0)\n",
+            "DNS configuration\nresolver #1\n nameserver[0] : 192.0.2.1\n",
+            Some("interface: utun9\n"),
+        )
+        .unwrap();
+        assert!(report.primary_ipv4_service.is_none());
+        assert!(report.other_services_with_configured_dns.is_empty());
+        assert!(!report.trial_ready);
     }
 }
