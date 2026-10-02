@@ -7,6 +7,7 @@ pub mod journal;
 pub mod macos;
 pub mod macos_identity;
 pub mod macos_preflight;
+pub mod macos_recovery;
 pub mod simulation;
 pub mod trial;
 pub mod windows;

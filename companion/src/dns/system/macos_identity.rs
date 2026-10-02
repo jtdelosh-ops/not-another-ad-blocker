@@ -147,6 +147,12 @@ mod native {
         fn SCNetworkServiceCopyProtocol(service: Cf, protocol_type: Cf) -> Cf;
         fn SCNetworkProtocolGetEnabled(protocol: Cf) -> u8;
         fn SCNetworkProtocolGetConfiguration(protocol: Cf) -> Cf;
+        fn SCNetworkProtocolSetConfiguration(protocol: Cf, configuration: Cf) -> u8;
+        fn SCNetworkProtocolSetEnabled(protocol: Cf, enabled: u8) -> u8;
+        fn SCPreferencesLock(preferences: Cf, wait: u8) -> u8;
+        fn SCPreferencesUnlock(preferences: Cf) -> u8;
+        fn SCPreferencesCommitChanges(preferences: Cf) -> u8;
+        fn SCPreferencesApplyChanges(preferences: Cf) -> u8;
         fn SCError() -> i32;
         static kSCNetworkProtocolTypeDNS: Cf;
     }
@@ -386,6 +392,130 @@ mod native {
         let right = parse_dns_dictionary(right)?;
         Ok(unsafe { CFEqual(left.0, right.0) } != 0)
     }
+
+    struct PreferenceLock(Cf);
+    impl Drop for PreferenceLock {
+        fn drop(&mut self) {
+            unsafe { SCPreferencesUnlock(self.0) };
+        }
+    }
+
+    /// The native compare and write happen under the preferences lock. The
+    /// caller's context check runs immediately before mutation while locked.
+    pub fn restore_dns_protocol(
+        record: &crate::dns::system::macos_recovery::Record,
+        verify_context: impl FnOnce() -> Result<bool, String>,
+    ) -> Result<(), String> {
+        use crate::dns::system::macos_recovery::Configuration;
+        let name = Owned::new(
+            unsafe {
+                CFStringCreateWithCString(ptr::null(), c"NAAB DNS offline recovery".as_ptr(), UTF8)
+            },
+            "process name",
+        )?;
+        let preferences = Owned::new(
+            unsafe { SCPreferencesCreate(ptr::null(), name.0, ptr::null()) },
+            "preferences session",
+        )?;
+        if unsafe { SCPreferencesLock(preferences.0, 0) } == 0 {
+            return Err("Mac network preferences are busy or cannot be locked".into());
+        }
+        let _lock = PreferenceLock(preferences.0);
+        let set = Owned::new(
+            unsafe { SCNetworkSetCopyCurrent(preferences.0) },
+            "current set",
+        )?;
+        if string(unsafe { SCNetworkSetGetSetID(set.0) }, "set ID")? != record.set_id {
+            return Err("Mac network location changed".into());
+        }
+        let services = Owned::new(unsafe { SCNetworkSetCopyServices(set.0) }, "service list")?;
+        let count = unsafe { CFArrayGetCount(services.0) };
+        if !(0..=64).contains(&count) {
+            return Err("Too many Mac network services".into());
+        }
+        let mut selected = None;
+        for index in 0..count {
+            let service = unsafe { CFArrayGetValueAtIndex(services.0, index) };
+            if service.is_null() {
+                return Err("Missing Mac network service".into());
+            }
+            if string(
+                unsafe { SCNetworkServiceGetServiceID(service) },
+                "service ID",
+            )? == record.service_id
+            {
+                if selected.replace(service).is_some() {
+                    return Err("Duplicate Mac service ID".into());
+                }
+            }
+        }
+        let service = selected.ok_or("Saved Mac network service is missing")?;
+        let interface = unsafe { SCNetworkServiceGetInterface(service) };
+        if interface.is_null()
+            || string(
+                unsafe { SCNetworkInterfaceGetBSDName(interface) },
+                "BSD device",
+            )? != record.device
+            || unsafe { SCNetworkServiceGetEnabled(service) } == 0
+        {
+            return Err("Mac network service changed".into());
+        }
+        let protocol = Owned::new(
+            unsafe { SCNetworkServiceCopyProtocol(service, kSCNetworkProtocolTypeDNS) },
+            "DNS protocol",
+        )?;
+        if (unsafe { SCNetworkProtocolGetEnabled(protocol.0) } != 0) != record.applied.enabled {
+            return Err("Mac DNS protocol enabled state changed".into());
+        }
+        let current = unsafe { SCNetworkProtocolGetConfiguration(protocol.0) };
+        let status = current.is_null().then(|| unsafe { SCError() });
+        let current_matches_applied = match &record.applied.configuration {
+            Configuration::Saved(xml) if !current.is_null() => {
+                let expected = parse_dns_dictionary(xml)?;
+                unsafe { CFEqual(current, expected.0) != 0 }
+            }
+            Configuration::NoSavedConfiguration => status == Some(1004),
+            _ => false,
+        };
+        if !current_matches_applied || !verify_context()? {
+            return Err("Mac DNS setting or network context changed before restore".into());
+        }
+        let original = match &record.original.configuration {
+            Configuration::Saved(xml) => Some(parse_dns_dictionary(xml)?),
+            Configuration::NoSavedConfiguration => None,
+        };
+        let replacement = original.as_ref().map_or(ptr::null(), |value| value.0);
+        if unsafe { SCNetworkProtocolSetConfiguration(protocol.0, replacement) } == 0 {
+            return Err("Could not restore Mac DNS configuration".into());
+        }
+        if unsafe { SCNetworkProtocolSetEnabled(protocol.0, record.original.enabled as u8) } == 0 {
+            return Err("Could not restore Mac DNS protocol enabled state".into());
+        }
+        if unsafe { SCPreferencesCommitChanges(preferences.0) } == 0 {
+            return Err("Could not commit restored Mac DNS configuration".into());
+        }
+        if unsafe { SCPreferencesApplyChanges(preferences.0) } == 0 {
+            return Err("Could not apply restored Mac DNS configuration".into());
+        }
+        Ok(())
+    }
+
+    pub fn request_dns_apply() -> Result<(), String> {
+        let name = Owned::new(
+            unsafe {
+                CFStringCreateWithCString(ptr::null(), c"NAAB DNS recovery apply".as_ptr(), UTF8)
+            },
+            "process name",
+        )?;
+        let preferences = Owned::new(
+            unsafe { SCPreferencesCreate(ptr::null(), name.0, ptr::null()) },
+            "preferences session",
+        )?;
+        if unsafe { SCPreferencesApplyChanges(preferences.0) } == 0 {
+            return Err("Could not apply current Mac DNS preferences".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -416,6 +546,19 @@ pub fn equivalent_dns_configuration(left: &[u8], right: &[u8]) -> Result<bool, S
 #[cfg(not(target_os = "macos"))]
 pub fn equivalent_dns_configuration(_: &[u8], _: &[u8]) -> Result<bool, String> {
     Err("Mac DNS protocol comparison is available only on macOS".into())
+}
+
+#[cfg(target_os = "macos")]
+pub fn restore_dns_protocol(
+    record: &super::macos_recovery::Record,
+    verify_context: impl FnOnce() -> Result<bool, String>,
+) -> Result<(), String> {
+    native::restore_dns_protocol(record, verify_context)
+}
+
+#[cfg(target_os = "macos")]
+pub fn request_dns_apply() -> Result<(), String> {
+    native::request_dns_apply()
 }
 
 #[cfg(not(target_os = "macos"))]
