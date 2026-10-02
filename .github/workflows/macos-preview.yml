@@ -78,6 +78,20 @@ jobs:
           test "$(uname -m)" = x86_64
           cargo build --release --locked --manifest-path companion/Cargo.toml
 
+      - name: Smoke test independent DNS recovery on isolated runner
+        run: |
+          cargo build --release --locked --manifest-path companion/Cargo.toml --bin naab-dns-macos
+          record='/Library/Application Support/NAAB-DNS-Preview/recovery.json'
+          if test -e "$record" || test -L "$record"; then
+            echo 'Unexpected pending DNS recovery record on the test runner.' >&2
+            exit 1
+          fi
+          sudo sh scripts/install-macos-dns-recovery.sh companion/target/release/naab-dns-macos
+          sudo launchctl print system/com.naab.dns-recovery >/dev/null
+          sudo '/Library/Application Support/NAAB-DNS-Preview/recovery-helper' recover-if-needed |
+            grep -Fx 'No pending Mac DNS recovery record.'
+          test ! -e "$record" && test ! -L "$record"
+
       - name: Package and test Intel Mac preview
         run: /bin/bash scripts/package-macos.sh
 
