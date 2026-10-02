@@ -2,6 +2,11 @@ name: Mac preview
 
 on:
   workflow_dispatch:
+    inputs:
+      live_recovery:
+        description: Test actual DNS restoration on the disposable hosted Mac
+        type: boolean
+        default: false
   push:
     branches: [main, feature/activity-viewer]
     paths:
@@ -82,7 +87,7 @@ jobs:
         run: |
           cargo build --release --locked --manifest-path companion/Cargo.toml --bin naab-dns-macos
           record='/Library/Application Support/NAAB-DNS-Preview/recovery.json'
-          if test -e "$record" || test -L "$record"; then
+          if sudo test -e "$record" || sudo test -L "$record"; then
             echo 'Unexpected pending DNS recovery record on the test runner.' >&2
             exit 1
           fi
@@ -90,7 +95,30 @@ jobs:
           sudo launchctl print system/com.naab.dns-recovery >/dev/null
           sudo '/Library/Application Support/NAAB-DNS-Preview/recovery-helper' recover-if-needed |
             grep -Fx 'No pending Mac DNS recovery record.'
-          test ! -e "$record" && test ! -L "$record"
+          sudo test ! -e "$record" && sudo test ! -L "$record"
+
+      - name: Build controlled Mac DNS recovery fixture
+        if: ${{ inputs.live_recovery }}
+        run: cargo build --locked --manifest-path companion/Cargo.toml --example macos_recovery_ci
+
+      - name: Test real DNS restoration and recovery after forced termination
+        if: ${{ inputs.live_recovery }}
+        timeout-minutes: 4
+        run: |
+          sudo /usr/bin/env GITHUB_ACTIONS="$GITHUB_ACTIONS" RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+            NAAB_LIVE_DNS_TEST=disposable-mac-dns-recovery \
+            companion/target/debug/examples/macos_recovery_ci --run
+
+      - name: Verify live DNS test cleanup
+        if: ${{ always() && inputs.live_recovery }}
+        timeout-minutes: 2
+        run: |
+          helper='/Library/Application Support/NAAB-DNS-Preview/recovery-helper'
+          record='/Library/Application Support/NAAB-DNS-Preview/recovery.json'
+          if sudo test -x "$helper"; then
+            sudo "$helper" recover-if-needed
+          fi
+          sudo test ! -e "$record" && sudo test ! -L "$record"
 
       - name: Package and test Intel Mac preview
         run: /bin/bash scripts/package-macos.sh
