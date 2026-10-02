@@ -357,6 +357,38 @@ pub async fn serve_system_preview(
     token: String,
     shutdown: impl Future<Output = ()> + Send,
 ) -> io::Result<()> {
+    validate_system_preview(&config, &token)?;
+    let sockets = SystemPreviewSockets::bind()?;
+    serve_system_preview_bound(config, policy, diagnostics, token, sockets, shutdown).await
+}
+
+/// Fixed loopback-only listeners that can be opened by a small privileged
+/// bootstrap before dropping privileges and starting the resolver runtime.
+/// Fields are private so callers cannot substitute public-facing listeners.
+pub struct SystemPreviewSockets {
+    udp4: std::net::UdpSocket,
+    tcp4: std::net::TcpListener,
+    udp6: std::net::UdpSocket,
+    tcp6: std::net::TcpListener,
+}
+
+impl SystemPreviewSockets {
+    pub fn bind() -> io::Result<Self> {
+        let sockets = Self {
+            udp4: std::net::UdpSocket::bind("127.0.0.1:53")?,
+            tcp4: std::net::TcpListener::bind("127.0.0.1:53")?,
+            udp6: std::net::UdpSocket::bind("[::1]:53")?,
+            tcp6: std::net::TcpListener::bind("[::1]:53")?,
+        };
+        sockets.udp4.set_nonblocking(true)?;
+        sockets.tcp4.set_nonblocking(true)?;
+        sockets.udp6.set_nonblocking(true)?;
+        sockets.tcp6.set_nonblocking(true)?;
+        Ok(sockets)
+    }
+}
+
+fn validate_system_preview(config: &DnsConfig, token: &str) -> io::Result<()> {
     config.validate().map_err(io::Error::other)?;
     if config
         .upstreams
@@ -370,12 +402,24 @@ pub async fn serve_system_preview(
     if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(io::Error::other("Invalid health token"));
     }
-    let v4 = "127.0.0.1:53";
-    let v6 = "[::1]:53";
-    let udp4 = Arc::new(UdpSocket::bind(v4).await?);
-    let tcp4 = TcpListener::bind(v4).await?;
-    let udp6 = Arc::new(UdpSocket::bind(v6).await?);
-    let tcp6 = TcpListener::bind(v6).await?;
+    Ok(())
+}
+
+/// Serve already-bound fixed listeners. The bootstrap must finish dropping any
+/// elevated credentials before calling this; this function never elevates.
+pub async fn serve_system_preview_bound(
+    config: DnsConfig,
+    policy: Arc<DnsPolicy>,
+    diagnostics: Arc<Diagnostics>,
+    token: String,
+    sockets: SystemPreviewSockets,
+    shutdown: impl Future<Output = ()> + Send,
+) -> io::Result<()> {
+    validate_system_preview(&config, &token)?;
+    let udp4 = Arc::new(UdpSocket::from_std(sockets.udp4)?);
+    let tcp4 = TcpListener::from_std(sockets.tcp4)?;
+    let udp6 = Arc::new(UdpSocket::from_std(sockets.udp6)?);
+    let tcp6 = TcpListener::from_std(sockets.tcp6)?;
     tokio::pin!(shutdown);
     tokio::select! {
         result = serve_bound(config.clone(), policy.clone(), diagnostics.clone(), udp4, tcp4, Some(token.clone()), std::future::pending()) => result,

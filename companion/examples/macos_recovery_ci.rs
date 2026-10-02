@@ -1,7 +1,14 @@
 //! Settings-changing recovery fixture for disposable GitHub-hosted Macs only.
-//! This is not a user-facing activation command or a loopback resolver trial.
-//! Both cases retain working upstreams and exercise the production file store,
-//! native compare/write, and separately installed recovery executable.
+//! No user-facing activation command is exposed. --run retains working upstreams;
+//! the separately opted-in --loopback cases exercise the ordinary DNS resolver.
+
+#[cfg(target_os = "macos")]
+#[path = "support/macos_loopback.rs"]
+mod loopback;
+
+#[cfg(target_os = "macos")]
+#[path = "support/macos_system_query.rs"]
+mod system_query;
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
@@ -20,7 +27,7 @@ mod live {
     };
     use std::{
         io::{BufRead, BufReader, Write},
-        net::IpAddr,
+        net::{IpAddr, SocketAddr},
         process::{Child, Command, Stdio},
         sync::mpsc,
         time::{Duration, Instant},
@@ -31,7 +38,7 @@ mod live {
     const REPORT: &str = "/Library/Application Support/NAAB-DNS-Preview/last-report.json";
     const ACK: &str = "disposable-mac-dns-recovery";
 
-    fn open_store() -> Result<FileStore, String> {
+    pub(super) fn open_store() -> Result<FileStore, String> {
         // launchd may be finishing its report immediately after clearing the
         // journal. Give that bounded critical section time to release the lock.
         let started = Instant::now();
@@ -49,7 +56,7 @@ mod live {
         }
     }
 
-    fn require_ci() -> Result<(), String> {
+    pub(super) fn require_ci_environment() -> Result<(), String> {
         // Accident prevention, not a security boundary: these variables can be
         // spoofed. The workflow must use a GitHub-hosted, disposable VM.
         for (name, expected) in [
@@ -63,6 +70,11 @@ mod live {
                 ));
             }
         }
+        Ok(())
+    }
+
+    fn require_ci() -> Result<(), String> {
+        require_ci_environment()?;
         // Production store validates root identity, trusted paths, and locking.
         let mut store = open_store()?;
         if store.load()?.is_some() {
@@ -78,7 +90,7 @@ mod live {
             && record.network_context_sha256 == observed.network_context_sha256
     }
 
-    fn expect_state(record: &Record, expected: &DnsState) -> Result<(), String> {
+    pub(super) fn expect_state(record: &Record, expected: &DnsState) -> Result<(), String> {
         let mut settings = NativeSettings;
         let observed = settings.observe(record)?;
         if !context_matches(record, &observed) || !settings.equivalent(&observed.dns, expected)? {
@@ -90,6 +102,10 @@ mod live {
     }
 
     fn capture() -> Result<Record, String> {
+        capture_with_upstreams().map(|(record, _)| record)
+    }
+
+    pub(super) fn capture_with_upstreams() -> Result<(Record, Vec<SocketAddr>), String> {
         let preflight = macos_preflight::preflight()?;
         eprintln!(
             "Runner primary DNS protocol: {}",
@@ -181,10 +197,16 @@ mod live {
         if settings.equivalent(&record.original, &record.applied)? {
             return Err("Fixture would not change the runner DNS configuration".into());
         }
-        Ok(record)
+        Ok((
+            record,
+            servers
+                .into_iter()
+                .map(|ip| SocketAddr::new(ip, 53))
+                .collect(),
+        ))
     }
 
-    fn activate(store: &mut FileStore, record: &Record) -> Result<(), String> {
+    pub(super) fn activate(store: &mut FileStore, record: &Record) -> Result<(), String> {
         // This must complete (including file and directory sync) before write.
         store.create(record)?;
         // Test-only inverse transaction uses the existing native locked compare
@@ -198,7 +220,7 @@ mod live {
         expect_state(record, &record.applied)
     }
 
-    fn run_helper() -> Result<(), String> {
+    pub(super) fn run_helper() -> Result<(), String> {
         let started = Instant::now();
         loop {
             let output = Command::new(HELPER)
@@ -220,7 +242,7 @@ mod live {
         }
     }
 
-    fn verify_restored(record: &Record) -> Result<(), String> {
+    pub(super) fn verify_restored(record: &Record) -> Result<(), String> {
         let mut store = open_store()?;
         if store.load()?.is_some() {
             return Err("Recovery journal is still pending".into());
@@ -240,7 +262,7 @@ mod live {
         Ok(())
     }
 
-    struct Holder(Child);
+    pub(super) struct Holder(pub(super) Child);
     impl Drop for Holder {
         fn drop(&mut self) {
             let _ = self.0.kill();
@@ -262,7 +284,7 @@ mod live {
         Err("Holder timed out without being terminated by the driver".into())
     }
 
-    fn test_cases() -> Result<(), String> {
+    pub(super) fn require_recovery_task() -> Result<(), String> {
         if !Command::new("/bin/launchctl")
             .args(["print", "system/com.naab.dns-recovery"])
             .stdout(Stdio::null())
@@ -272,6 +294,11 @@ mod live {
         {
             return Err("The independent recovery task is not installed".into());
         }
+        Ok(())
+    }
+
+    fn test_cases() -> Result<(), String> {
+        require_recovery_task()?;
         let baseline = capture()?;
         println!(
             "Baseline saved DNS configuration: {}",
@@ -354,12 +381,17 @@ mod live {
     }
 
     pub fn run() -> Result<(), String> {
-        require_ci()?;
         let args: Vec<_> = std::env::args().skip(1).collect();
+        if args.first().map(String::as_str) == Some("--resolver") {
+            return super::loopback::resolver_child(&args[1..]);
+        }
+        require_ci()?;
         let result = if args == ["--hold"] {
             hold()
         } else if args == ["--run"] {
             test_cases()
+        } else if args == ["--loopback"] {
+            super::loopback::test_cases()
         } else {
             return Err("Use --run only on a disposable GitHub-hosted Mac".into());
         };

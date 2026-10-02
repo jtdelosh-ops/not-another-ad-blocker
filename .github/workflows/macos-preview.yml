@@ -7,6 +7,10 @@ on:
         description: Test actual DNS restoration on the disposable hosted Mac
         type: boolean
         default: false
+      live_loopback:
+        description: Test guarded system DNS passthrough on the disposable hosted Mac
+        type: boolean
+        default: false
   push:
     branches: [main, feature/activity-viewer]
     paths:
@@ -98,8 +102,10 @@ jobs:
           sudo test ! -e "$record" && sudo test ! -L "$record"
 
       - name: Build controlled Mac DNS recovery fixture
-        if: ${{ inputs.live_recovery }}
-        run: cargo build --locked --manifest-path companion/Cargo.toml --example macos_recovery_ci
+        if: ${{ inputs.live_recovery || inputs.live_loopback }}
+        run: |
+          cargo test --locked --manifest-path companion/Cargo.toml --example macos_recovery_ci
+          cargo build --locked --manifest-path companion/Cargo.toml --example macos_recovery_ci
 
       - name: Test real DNS restoration and recovery after forced termination
         if: ${{ inputs.live_recovery }}
@@ -109,8 +115,17 @@ jobs:
             NAAB_LIVE_DNS_TEST=disposable-mac-dns-recovery \
             companion/target/debug/examples/macos_recovery_ci --run
 
+      - name: Test guarded loopback DNS passthrough and resolver failure
+        if: ${{ inputs.live_loopback }}
+        timeout-minutes: 4
+        run: |
+          sudo /usr/bin/env GITHUB_ACTIONS="$GITHUB_ACTIONS" RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
+            NAAB_LIVE_DNS_TEST=disposable-mac-dns-recovery \
+            NAAB_LIVE_LOOPBACK_TEST=disposable-mac-loopback \
+            companion/target/debug/examples/macos_recovery_ci --loopback
+
       - name: Verify live DNS test cleanup
-        if: ${{ always() && inputs.live_recovery }}
+        if: ${{ always() && (inputs.live_recovery || inputs.live_loopback) }}
         timeout-minutes: 2
         run: |
           helper='/Library/Application Support/NAAB-DNS-Preview/recovery-helper'
