@@ -587,6 +587,7 @@ version = "0.2.1"
 dependencies = [
  "hickory-proto",
  "idna",
+ "libc",
  "rand 0.9.5",
  "reqwest",
  "serde",

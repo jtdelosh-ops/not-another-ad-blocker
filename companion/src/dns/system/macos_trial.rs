@@ -10,6 +10,19 @@ pub trait TrialStore: Store {
     fn create(&mut self, record: &Record) -> Result<(), String>;
 }
 
+pub trait TrialSettings: Settings {
+    /// Recheck effective policy and the full saved setting before journaling.
+    /// Offline recovery intentionally does not impose activation admission.
+    fn admit(&mut self, record: &Record) -> Result<(), String>;
+}
+
+#[cfg(target_os = "macos")]
+impl TrialSettings for macos_recovery::NativeSettings {
+    fn admit(&mut self, record: &Record) -> Result<(), String> {
+        super::macos_admission::admit_record(record)
+    }
+}
+
 #[cfg(target_os = "macos")]
 impl TrialStore for macos_recovery::FileStore {
     fn create(&mut self, record: &Record) -> Result<(), String> {
@@ -51,7 +64,7 @@ pub fn expect<P: Settings>(
 /// unwinding panics also lead through recovery. Cancellation remains owned by
 /// the caller until this function (including restoration) returns. Native calls
 /// may overrun the polling deadline; it is not a hard process execution timeout.
-pub fn run<S: TrialStore, P: Settings>(
+pub fn run<S: TrialStore, P: TrialSettings>(
     store: &mut S,
     settings: &mut P,
     record: &Record,
@@ -76,13 +89,23 @@ pub fn run<S: TrialStore, P: Settings>(
     if cancelled() || !healthy() || cancelled() {
         return Err("Mac trial cancelled or resolver unhealthy before activation".into());
     }
+    settings.admit(record)?;
     expect(settings, record, &record.original)?;
+    if cancelled() || !healthy() || cancelled() {
+        return Err("Mac trial cancelled or resolver unhealthy after admission".into());
+    }
     // A failed save never permits an OS mutation. Its possible partial record
     // remains available to offline recovery rather than being silently removed.
     store.create(record)?;
     let started = Instant::now();
     let outcome =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<End, String> {
+            if cancelled() {
+                return Ok(End::Cancelled);
+            }
+            if !healthy() {
+                return Err("Resolver became unhealthy before activation".into());
+            }
             if cancelled() {
                 return Ok(End::Cancelled);
             }

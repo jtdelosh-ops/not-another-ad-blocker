@@ -2,6 +2,8 @@
 //! a stable recovery identity or permission to alter network settings.
 use super::macos::Service;
 #[cfg(target_os = "macos")]
+use super::macos_command::{self, Budget};
+#[cfg(target_os = "macos")]
 use super::macos_identity::DnsConfigurationState;
 use super::macos_identity::DnsProtocolSummary;
 #[cfg(any(test, target_os = "macos"))]
@@ -10,8 +12,6 @@ use super::macos_identity::ServiceIdentity;
 #[cfg(target_os = "macos")]
 use super::{macos, macos_identity};
 use serde::Serialize;
-#[cfg(target_os = "macos")]
-use std::process::Command;
 
 #[cfg(any(test, target_os = "macos"))]
 const MAX_OUTPUT: usize = 256 * 1024;
@@ -129,12 +129,14 @@ fn parse_default_route(output: &str) -> Result<Option<String>, String> {
 fn parse_resolvers(output: &str) -> Result<Vec<Resolver>, String> {
     let mut section: Option<String> = None;
     let mut result: Vec<Resolver> = Vec::new();
+    let mut seen_fields = std::collections::HashSet::new();
     for line in bounded_lines(output)? {
         if line.starts_with("DNS configuration") {
             section = Some(line.to_owned());
             continue;
         }
         if let Some(number) = line.strip_prefix("resolver #") {
+            seen_fields.clear();
             let number = number
                 .parse()
                 .map_err(|_| "Invalid macOS resolver number")?;
@@ -161,11 +163,17 @@ fn parse_resolvers(output: &str) -> Result<Vec<Resolver>, String> {
             .ok_or("Unrecognized macOS DNS configuration")?;
         let (key, value) = line.split_once(':').ok_or("Invalid macOS resolver field")?;
         let (key, value) = (key.trim(), value.trim());
+        if !seen_fields.insert(key.to_owned()) {
+            return Err("Duplicate macOS resolver field".into());
+        }
         if key.is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
             return Err("Invalid macOS resolver value".into());
         }
         match key {
             key if key.starts_with("nameserver[") && key.ends_with(']') => {
+                if key[11..key.len() - 1].parse::<usize>().ok() != Some(current.nameservers.len()) {
+                    return Err("Invalid macOS nameserver ordering".into());
+                }
                 if value.is_empty() {
                     return Err("Empty macOS nameserver".into());
                 }
@@ -294,20 +302,10 @@ fn attach_identities(mut report: Preflight, snapshot: IdentitySnapshot) -> Prefl
 }
 
 #[cfg(target_os = "macos")]
-fn run(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|error| format!("Unable to run macOS network command: {error}"))?;
-    if !output.status.success() || output.stdout.len() > MAX_OUTPUT {
-        return Err("macOS network command failed or returned too much output".into());
-    }
-    String::from_utf8(output.stdout).map_err(|_| "macOS network output is not UTF-8".into())
-}
-
-#[cfg(target_os = "macos")]
 pub fn preflight() -> Result<Preflight, String> {
-    let services = macos::inspect()?;
+    let budget = Budget::new(std::time::Duration::from_secs(20));
+    let run = |program: &str, args: &[&str]| macos_command::run(program, args, budget, MAX_OUTPUT);
+    let services = macos::inspect_with_budget(budget)?;
     let order = run("/usr/sbin/networksetup", &["-listnetworkserviceorder"])?;
     let dns = run("/usr/sbin/scutil", &["--dns"])?;
     let route = run("/sbin/route", &["-n", "get", "default"]).ok();
@@ -340,6 +338,7 @@ pub fn preflight() -> Result<Preflight, String> {
             ),
         }
     }
+    budget.check()?;
     Ok(report)
 }
 
@@ -420,6 +419,13 @@ mod tests {
         assert!(parse_default_route("interface: en0\ninterface: en1\n").is_err());
         assert!(parse_resolvers(&"x".repeat(MAX_OUTPUT + 1)).is_err());
         assert!(parse_resolvers("DNS configuration\nresolver #1\n  flags : \n").is_ok());
+        assert!(parse_resolvers(
+            "DNS configuration\nresolver #1\n flags : Supplemental\n flags : Request A records\n"
+        )
+        .is_err());
+        assert!(
+            parse_resolvers("DNS configuration\nresolver #1\n nameserver[x] : 1.1.1.1\n").is_err()
+        );
     }
 
     #[test]

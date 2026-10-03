@@ -1,6 +1,6 @@
 use naab_companion::dns::system::{
     macos_recovery::{Configuration, DnsState, Observation, Record, Report, Settings, Store},
-    macos_trial::{self, End, Event, TrialStore},
+    macos_trial::{self, End, Event, TrialSettings, TrialStore},
 };
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
@@ -13,9 +13,21 @@ struct Memory {
     fail_apply_after_write: bool,
     fail_restore: bool,
     fail_report: bool,
+    fail_admission: bool,
+    admitted: bool,
 }
 struct Journal(Rc<RefCell<Memory>>);
 struct Platform(Rc<RefCell<Memory>>);
+impl TrialSettings for Platform {
+    fn admit(&mut self, _: &Record) -> Result<(), String> {
+        self.0.borrow_mut().admitted = true;
+        if self.0.borrow().fail_admission {
+            Err("policy changed".into())
+        } else {
+            Ok(())
+        }
+    }
+}
 impl Store for Journal {
     fn load(&mut self) -> Result<Option<Record>, String> {
         Ok(self.0.borrow().record.clone())
@@ -272,4 +284,60 @@ fn missing_journal_is_not_successful_restoration() {
     );
     assert!(result.unwrap_err().contains("recovery needs attention"));
     assert_eq!(m.borrow().dns.as_ref(), Some(&r.applied));
+}
+
+#[test]
+fn rejected_admission_never_journals_or_changes_dns() {
+    let (r, m) = fixture();
+    m.borrow_mut().fail_admission = true;
+    assert!(macos_trial::run(
+        &mut Journal(m.clone()),
+        &mut Platform(m.clone()),
+        &r,
+        Duration::from_secs(1),
+        || false,
+        || true,
+        |_| Ok(())
+    )
+    .unwrap_err()
+    .contains("policy changed"));
+    assert_eq!(m.borrow().writes, 0);
+    assert!(m.borrow().record.is_none());
+}
+
+#[test]
+fn resolver_loss_or_cancellation_during_admission_prevents_journal_and_write() {
+    for cancel in [false, true] {
+        let (r, m) = fixture();
+        let result = macos_trial::run(
+            &mut Journal(m.clone()),
+            &mut Platform(m.clone()),
+            &r,
+            Duration::from_secs(1),
+            || cancel && m.borrow().admitted,
+            || cancel || !m.borrow().admitted,
+            |_| Ok(()),
+        );
+        assert!(result.unwrap_err().contains("after admission"));
+        assert_eq!(m.borrow().writes, 0);
+        assert!(m.borrow().record.is_none());
+    }
+}
+
+#[test]
+fn resolver_loss_after_journaling_clears_record_without_applying_dns() {
+    let (r, m) = fixture();
+    let result = macos_trial::run(
+        &mut Journal(m.clone()),
+        &mut Platform(m.clone()),
+        &r,
+        Duration::from_secs(1),
+        || false,
+        || m.borrow().record.is_none(),
+        |_| Ok(()),
+    );
+    assert!(result.unwrap_err().contains("before activation"));
+    assert_eq!(m.borrow().writes, 0);
+    assert!(m.borrow().record.is_none());
+    assert_eq!(m.borrow().dns.as_ref(), Some(&r.original));
 }

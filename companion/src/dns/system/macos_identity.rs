@@ -130,6 +130,10 @@ mod native {
         ) -> Cf;
         fn CFGetTypeID(value: Cf) -> usize;
         fn CFDictionaryGetTypeID() -> usize;
+        fn CFDictionaryGetCount(dictionary: Cf) -> isize;
+        fn CFDictionaryGetKeysAndValues(dictionary: Cf, keys: *mut Cf, values: *mut Cf);
+        fn CFArrayGetTypeID() -> usize;
+        fn CFStringGetTypeID() -> usize;
         fn CFEqual(left: Cf, right: Cf) -> u8;
     }
 
@@ -424,6 +428,73 @@ mod native {
         Ok(unsafe { CFEqual(left.0, right.0) } != 0)
     }
 
+    /// Narrow activation schema only. Recovery still preserves arbitrary saved
+    /// dictionaries exactly and must not reject records based on newer policy.
+    pub fn trial_dns_servers(xml: &[u8]) -> Result<Option<Vec<std::net::IpAddr>>, String> {
+        use crate::dns::system::macos_admission::{allowed_server, domain};
+        let dictionary = parse_dns_dictionary(xml)?;
+        let count = unsafe { CFDictionaryGetCount(dictionary.0) };
+        if count == 0 {
+            return Ok(None);
+        }
+        if !(0..=2).contains(&count) {
+            return Err("Unsupported DNS dictionary keys".into());
+        }
+        let mut keys = vec![ptr::null(); count as usize];
+        let mut values = vec![ptr::null(); count as usize];
+        // Both output arrays have exactly the count of this immutable parsed
+        // dictionary; borrowed keys/values remain live with `dictionary`.
+        unsafe {
+            CFDictionaryGetKeysAndValues(dictionary.0, keys.as_mut_ptr(), values.as_mut_ptr())
+        };
+        let mut servers = None;
+        for (key, value) in keys.into_iter().zip(values) {
+            if key.is_null()
+                || value.is_null()
+                || unsafe { CFGetTypeID(key) != CFStringGetTypeID() }
+            {
+                return Err("Malformed DNS dictionary field".into());
+            }
+            let key = string(key, "DNS key")?;
+            if !matches!(key.as_str(), "ServerAddresses" | "SearchDomains")
+                || unsafe { CFGetTypeID(value) != CFArrayGetTypeID() }
+            {
+                return Err("Unsupported DNS dictionary field".into());
+            }
+            let length = unsafe { CFArrayGetCount(value) };
+            if !(1..=8).contains(&length) {
+                return Err("Unsupported DNS field length".into());
+            }
+            let mut addresses = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for index in 0..length {
+                let entry = unsafe { CFArrayGetValueAtIndex(value, index) };
+                if entry.is_null() || unsafe { CFGetTypeID(entry) != CFStringGetTypeID() } {
+                    return Err("DNS field contains a non-string value".into());
+                }
+                let text = string(entry, "DNS field value")?;
+                if !seen.insert(text.clone()) {
+                    return Err("Duplicate DNS field value".into());
+                }
+                if key == "ServerAddresses" {
+                    let ip = text
+                        .parse()
+                        .map_err(|_| "DNS address is not an unscoped IP")?;
+                    if !allowed_server(&ip) || addresses.contains(&ip) {
+                        return Err("Unsupported original DNS address".into());
+                    }
+                    addresses.push(ip);
+                } else if !domain(&text) {
+                    return Err("Unsupported search domain".into());
+                }
+            }
+            if key == "ServerAddresses" {
+                servers = Some(addresses);
+            }
+        }
+        Ok(servers)
+    }
+
     struct PreferenceLock(Cf);
     impl Drop for PreferenceLock {
         fn drop(&mut self) {
@@ -643,6 +714,11 @@ pub fn equivalent_dns_configuration(_: &[u8], _: &[u8]) -> Result<bool, String> 
 }
 
 #[cfg(target_os = "macos")]
+pub fn trial_dns_servers(xml: &[u8]) -> Result<Option<Vec<std::net::IpAddr>>, String> {
+    native::trial_dns_servers(xml)
+}
+
+#[cfg(target_os = "macos")]
 pub fn restore_dns_protocol(
     record: &super::macos_recovery::Record,
     verify_context: impl FnOnce() -> Result<bool, String>,
@@ -662,6 +738,38 @@ pub fn inspect() -> Result<IdentitySnapshot, String> {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
+    #[test]
+    fn trial_dictionary_accepts_exact_simple_settings_and_rejects_unknown_policy() {
+        let plist = |fields: &str| {
+            format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>{fields}</dict></plist>")
+        };
+        assert_eq!(
+            super::trial_dns_servers(plist("").as_bytes()).unwrap(),
+            None
+        );
+        let good = plist("<key>ServerAddresses</key><array><string>1.1.1.1</string><string>2606:4700:4700::1111</string></array><key>SearchDomains</key><array><string>example.test</string></array>");
+        assert_eq!(
+            super::trial_dns_servers(good.as_bytes()).unwrap().unwrap(),
+            [
+                "1.1.1.1".parse::<std::net::IpAddr>().unwrap(),
+                "2606:4700:4700::1111".parse().unwrap()
+            ]
+        );
+        for fields in [
+            "<key>SupplementalMatchDomains</key><array><string>corp.example</string></array>",
+            "<key>ServerAddresses</key><string>1.1.1.1</string>",
+            "<key>ServerAddresses</key><array><integer>1</integer></array>",
+            "<key>ServerAddresses</key><array><string>127.0.0.1</string></array>",
+            "<key>ServerAddresses</key><array/>",
+            "<key>SearchDomains</key><array><string>-bad.example</string></array>",
+        ] {
+            assert!(
+                super::trial_dns_servers(plist(fields).as_bytes()).is_err(),
+                "accepted {fields}"
+            );
+        }
+        assert!(super::trial_dns_servers(b"not a plist").is_err());
+    }
     #[test]
     fn native_identity_reader_works_without_elevation() {
         let snapshot = super::inspect().expect("read current macOS network configuration");

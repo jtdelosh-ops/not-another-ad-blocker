@@ -1,9 +1,9 @@
 //! Read-only macOS network-service inventory. This is deliberately separate
 //! from `Platform`: service names alone cannot identify a recovery target.
+#[cfg(target_os = "macos")]
+use super::macos_command::{self, Budget};
 use serde::Serialize;
 use std::net::IpAddr;
-#[cfg(target_os = "macos")]
-use std::process::Command;
 
 #[cfg(any(test, target_os = "macos"))]
 const MAX_OUTPUT: usize = 64 * 1024;
@@ -101,19 +101,12 @@ fn inspect_with(
 
 #[cfg(target_os = "macos")]
 pub fn inspect() -> Result<Vec<Service>, String> {
-    inspect_with(|args| {
-        let output = Command::new("/usr/sbin/networksetup")
-            .args(args)
-            .output()
-            .map_err(|error| format!("Unable to run networksetup: {error}"))?;
-        if !output.status.success() {
-            return Err(format!("networksetup {} failed", args[0]));
-        }
-        if output.stdout.len() > MAX_OUTPUT {
-            return Err("networksetup output too large".into());
-        }
-        String::from_utf8(output.stdout).map_err(|_| "networksetup output is not UTF-8".into())
-    })
+    inspect_with_budget(Budget::new(std::time::Duration::from_secs(15)))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn inspect_with_budget(budget: Budget) -> Result<Vec<Service>, String> {
+    inspect_with(|args| macos_command::run("/usr/sbin/networksetup", args, budget, MAX_OUTPUT))
 }
 
 #[cfg(not(target_os = "macos"))]

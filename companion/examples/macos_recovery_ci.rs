@@ -23,7 +23,7 @@ fn main() {
 #[cfg(target_os = "macos")]
 mod live {
     use naab_companion::dns::system::{
-        macos_identity, macos_preflight,
+        macos_admission, macos_identity, macos_preflight,
         macos_recovery::{
             Configuration, DnsState, FileStore, NativeSettings, Observation, Record, Settings,
             Store,
@@ -31,7 +31,7 @@ mod live {
     };
     use std::{
         io::{BufRead, BufReader, Write},
-        net::{IpAddr, SocketAddr},
+        net::SocketAddr,
         process::{Child, Command, Stdio},
         sync::mpsc,
         time::{Duration, Instant},
@@ -116,50 +116,13 @@ mod live {
             serde_json::to_string(&preflight.primary_service_dns_protocol)
                 .map_err(|e| e.to_string())?
         );
-        let device = preflight
-            .primary_ipv4_interface
-            .ok_or("Missing primary interface")?;
-        let service_id = preflight
-            .primary_ipv4_service_id
-            .ok_or("Missing primary service ID")?;
-        let set_id = preflight
-            .current_set_id
-            .ok_or("Missing current location ID")?;
-        if !preflight.other_services_with_configured_dns.is_empty() {
-            return Err("Other services control explicit DNS on this runner".into());
-        }
-        for resolver in &preflight.resolvers {
-            if resolver.nameservers.is_empty() && resolver.options.as_deref() == Some("mdns") {
-                continue;
-            }
-            if resolver.nameservers.is_empty()
-                || resolver.domain.is_some()
-                || resolver.options.is_some()
-                || resolver
-                    .interface
-                    .as_ref()
-                    .is_some_and(|value| value != &device)
-            {
-                return Err("Runner has unsupported scoped or supplemental DNS policy".into());
-            }
-        }
-        let servers: Vec<IpAddr> = preflight
-            .default_dns_servers
-            .iter()
-            .map(|value| {
-                value
-                    .parse()
-                    .map_err(|_| "Runner DNS server is not an explicit IP")
-            })
-            .collect::<Result<_, _>>()?;
-        if servers.is_empty()
-            || servers.len() > 8
-            || servers
-                .iter()
-                .any(|ip| ip.is_loopback() || ip.is_unspecified() || ip.is_multicast())
-        {
-            return Err("Runner DNS upstreams are unsupported".into());
-        }
+        let candidate = macos_admission::candidate(&preflight)?;
+        let (device, service_id, set_id, servers) = (
+            candidate.device,
+            candidate.service_id,
+            candidate.set_id,
+            candidate.servers,
+        );
         // IP parsing above makes interpolation into XML safe. The marker makes
         // the dictionary genuinely different even if DNS was already static.
         let addresses = servers
@@ -196,6 +159,12 @@ mod live {
             return Err("Runner location changed or its DNS protocol is disabled".into());
         }
         record.original = observed.dns;
+        let Configuration::Saved(xml) = &record.original.configuration else {
+            return Err("Missing complete original DNS dictionary".into());
+        };
+        if macos_identity::trial_dns_servers(xml)? != candidate.configured_servers {
+            return Err("Original DNS dictionary disagrees with service inventory".into());
+        }
         record.network_context_sha256 = observed.network_context_sha256;
         record.validate()?;
         if settings.equivalent(&record.original, &record.applied)? {

@@ -223,18 +223,6 @@ pub struct FileStore {
     _lock: std::fs::File,
 }
 
-#[cfg(target_os = "macos")]
-fn run_network_command(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|e| format!("Could not inspect Mac network context: {e}"))?;
-    if !output.status.success() || output.stdout.len() > 16 * 1024 {
-        return Err("Mac network context is unavailable".into());
-    }
-    String::from_utf8(output.stdout).map_err(|_| "Invalid Mac network context output".into())
-}
-
 #[cfg(any(test, target_os = "macos"))]
 fn parse_route(output: &str) -> Result<(String, String), String> {
     let mut device = None;
@@ -307,6 +295,10 @@ fn parse_gateway_mac(output: &str, gateway: &str, device: &str) -> Result<String
 
 #[cfg(target_os = "macos")]
 fn network_context(expected_device: &str) -> Result<String, String> {
+    use super::macos_command::{self, Budget};
+    let budget = Budget::new(std::time::Duration::from_secs(5));
+    let run_network_command =
+        |program: &str, args: &[&str]| macos_command::run(program, args, budget, 16 * 1024);
     let route = run_network_command("/sbin/route", &["-n", "get", "default"])?;
     let (device, gateway) = parse_route(&route)?;
     if device != expected_device {

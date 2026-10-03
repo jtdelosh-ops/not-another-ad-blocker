@@ -16,6 +16,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "signa
 rand = "0.9"
 idna = "1"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [profile.release]
 lto = true
 codegen-units = 1

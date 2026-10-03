@@ -5,6 +5,9 @@
 pub mod health;
 pub mod journal;
 pub mod macos;
+pub mod macos_admission;
+#[cfg(unix)]
+pub(crate) mod macos_command;
 pub mod macos_identity;
 pub mod macos_preflight;
 pub mod macos_recovery;
