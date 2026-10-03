@@ -10,7 +10,12 @@ use naab_companion::dns::{
     config::DnsConfig,
     diagnostics::Diagnostics,
     server,
-    system::{health::local_probe, macos_preflight, macos_recovery::Configuration},
+    system::{
+        health::local_probe,
+        macos_preflight,
+        macos_recovery::{Configuration, NativeSettings},
+        macos_trial,
+    },
 };
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -237,7 +242,7 @@ async fn forwarded_a(destination: SocketAddr, tcp: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn case(force_resolver_failure: bool) -> Result<(), String> {
+fn case(force_resolver_failure: bool, controller: Option<&str>) -> Result<(), String> {
     let (mut record, captured_upstreams) = live::capture_with_upstreams()?;
     // The hosted VM's DNS gateway may not support TCP. Test explicitly chosen
     // upstreams without changing production forwarding or the recovery snapshot.
@@ -257,7 +262,7 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
     // Observe the runner gateway separately from the required test upstreams.
     // Neither probe uses or changes system DNS; chosen upstreams must pass both.
     let baseline_runtime = runtime()?;
-    for upstream in &captured_upstreams {
+    for upstream in captured_upstreams.iter().filter(|_| controller.is_none()) {
         for tcp in [false, true] {
             let result = baseline_runtime.block_on(forwarded_a(*upstream, tcp));
             println!("Captured upstream diagnostic: {upstream}, tcp={tcp}, result={result:?}");
@@ -311,6 +316,53 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
         "PASS: unprivileged resolver forwarded A queries over IPv4/IPv6 UDP/TCP before activation"
     );
     let mut store = live::open_store()?;
+    if let Some(mode) = controller {
+        use std::cell::RefCell;
+        // Register before the controller can persist or change DNS. The signal
+        // guard remains alive through exact restoration and report validation.
+        let stop = RefCell::new(macos_trial::Cancellation::install()?);
+        let resolver = RefCell::new(resolver);
+        let result = macos_trial::run(
+            &mut store,
+            &mut NativeSettings,
+            &record,
+            Duration::from_secs(if mode == "deadline" { 3 } else { 20 }),
+            || stop.borrow_mut().requested(),
+            || check_live(&mut resolver.borrow_mut(), &rt, &token).is_ok(),
+            |event| {
+                match event {
+                    macos_trial::Event::Active => println!("TRIAL_ACTIVE"),
+                    macos_trial::Event::Restoring => {
+                        println!("TRIAL_RESTORING");
+                        std::io::stdout().flush().map_err(|e| e.to_string())?;
+                        if mode != "deadline" {
+                            // Driver delivers a second actual signal while the
+                            // cleanup path owns the journal and cancellation.
+                            std::thread::sleep(Duration::from_secs(2));
+                        }
+                    }
+                }
+                std::io::stdout().flush().map_err(|e| e.to_string())
+            },
+        );
+        drop(store);
+        // Do not invoke the fallback on success: the controller must itself
+        // restore and clear. The outer driver retains independent error cleanup.
+        let (end, report) = result?;
+        let expected = if mode == "deadline" {
+            macos_trial::End::Deadline
+        } else {
+            macos_trial::End::Cancelled
+        };
+        if end != expected
+            || report.outcome != naab_companion::dns::system::macos_recovery::Outcome::Restored
+        {
+            return Err(format!("Unexpected controller result: {end:?}, {report:?}"));
+        }
+        live::verify_restored(&record)?;
+        println!("PASS: controller {mode} restored exact original DNS; journal cleared");
+        return Ok(());
+    }
     let result: Result<(), String> = (|| {
         live::activate(&mut store, &record)?;
         let started = Instant::now();
@@ -436,7 +488,16 @@ pub(super) fn test_cases() -> Result<(), String> {
     require_opt_in()?;
     live::require_recovery_task()?;
     println!("Loopback case 1: system DNS passthrough with a guarded deadline");
-    case(false)?;
+    case(false, None)?;
     println!("Loopback case 2: stop resolver and recover after local health failure");
-    case(true)
+    case(true, None)
+}
+
+pub(super) fn controller_case(mode: &str) -> Result<(), String> {
+    require_opt_in()?;
+    live::require_recovery_task()?;
+    if !matches!(mode, "deadline" | "interrupt" | "terminate") {
+        return Err("Unknown controller case".into());
+    }
+    case(false, Some(mode))
 }

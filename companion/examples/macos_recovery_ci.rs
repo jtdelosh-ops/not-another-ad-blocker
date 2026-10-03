@@ -10,6 +10,10 @@ mod loopback;
 #[path = "support/macos_system_query.rs"]
 mod system_query;
 
+#[cfg(target_os = "macos")]
+#[path = "support/macos_controller.rs"]
+mod controller;
+
 #[cfg(not(target_os = "macos"))]
 fn main() {
     eprintln!("This live recovery fixture requires a disposable macOS runner.");
@@ -392,6 +396,10 @@ mod live {
             test_cases()
         } else if args == ["--loopback"] {
             super::loopback::test_cases()
+        } else if args == ["--controller"] {
+            super::controller::test_cases()
+        } else if args.len() == 2 && args[0] == "--controller-child" {
+            super::loopback::controller_case(&args[1])
         } else {
             return Err("Use --run only on a disposable GitHub-hosted Mac".into());
         };
