@@ -183,6 +183,25 @@ fn static_order_must_agree_with_effective_dns() {
 }
 
 #[test]
+fn rejects_a_configured_ipv6_server_missing_from_effective_dns() {
+    let mut r = report();
+    r.services[0].configured_dns = Some(
+        r.default_dns_servers
+            .iter()
+            .map(|s| s.parse().unwrap())
+            .collect(),
+    );
+    r.default_dns_servers.pop();
+    for resolver in &mut r.resolvers {
+        resolver.nameservers.pop();
+    }
+    assert_eq!(
+        candidate(&r).unwrap_err(),
+        "Configured and effective DNS servers differ"
+    );
+}
+
+#[test]
 fn unknown_mdns_policy_cannot_bypass_admission() {
     let mut r = report();
     r.resolvers[0].nameservers.clear();

@@ -87,12 +87,21 @@ fn signal_case(mode: &str, signal: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn static_case(ordered: bool) -> Result<(), String> {
+#[derive(Clone, Copy, Debug)]
+enum StaticCase {
+    SingleIpv4,
+    OrderedIpv4,
+    MixedOfflineRecovery,
+}
+
+fn static_case(case: StaticCase) -> Result<(), String> {
     let (mut baseline, _) = live::capture_with_upstreams()?;
-    let extra = if ordered {
-        "<string>1.0.0.1</string><string>2606:4700:4700::1111</string>"
-    } else {
-        ""
+    let extra = match case {
+        StaticCase::SingleIpv4 => "",
+        StaticCase::OrderedIpv4 => "<string>1.0.0.1</string>",
+        StaticCase::MixedOfflineRecovery => {
+            "<string>1.0.0.1</string><string>2606:4700:4700::1111</string>"
+        }
     };
     baseline.applied.configuration = Configuration::Saved(format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict>\
@@ -108,7 +117,23 @@ fn static_case(ordered: bool) -> Result<(), String> {
         // not a production rebase or a supported nested recovery transaction.
         store.clear()?;
         drop(store);
-        println!("Static controller baseline: ordered={ordered}, including search domains");
+        println!("Static baseline: {case:?}, including search domains");
+        if matches!(case, StaticCase::MixedOfflineRecovery) {
+            // This hosted runner omits the configured IPv6 server from its
+            // effective DNS. Do not bypass controller admission. Independently
+            // prove offline recovery can restore the complete mixed dictionary:
+            // save it as original, apply the initial runner setting, then recover.
+            let mut recovery = baseline.clone();
+            recovery.session_id = format!("{:032x}", rand::random::<u128>());
+            std::mem::swap(&mut recovery.original, &mut recovery.applied);
+            let mut store = live::open_store()?;
+            live::activate(&mut store, &recovery)?;
+            drop(store);
+            live::run_helper()?;
+            live::verify_restored(&recovery)?;
+            println!("PASS: offline recovery restored ordered mixed IPv4/IPv6 and search domains; journal cleared");
+            return Ok(());
+        }
         // Preferences read-back does not establish that configd has published
         // matching effective resolvers. Wait only in this disposable setup;
         // production admission still rejects inconsistent snapshots immediately.
@@ -159,7 +184,7 @@ fn static_case(ordered: bool) -> Result<(), String> {
     live::run_helper()?;
     live::verify_restored(&baseline)?;
     result?;
-    println!("PASS: static ordered={ordered} restored exactly; runner baseline restored");
+    println!("PASS: static {case:?} restored exactly; runner baseline restored");
     Ok(())
 }
 
@@ -168,6 +193,7 @@ pub(super) fn test_cases() -> Result<(), String> {
     live::require_recovery_task()?;
     signal_case("interrupt", "-INT")?;
     signal_case("terminate", "-TERM")?;
-    static_case(false)?;
-    static_case(true)
+    static_case(StaticCase::SingleIpv4)?;
+    static_case(StaticCase::OrderedIpv4)?;
+    static_case(StaticCase::MixedOfflineRecovery)
 }
