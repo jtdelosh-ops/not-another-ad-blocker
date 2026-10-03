@@ -1,6 +1,7 @@
 //! Actual signal delivery and static baselines on the disposable hosted VM.
 use super::{live, loopback};
 use naab_companion::dns::system::macos_recovery::{Configuration, Store};
+use naab_companion::dns::system::{macos_admission, macos_preflight};
 use std::{
     io::{BufRead, BufReader, Read},
     process::{Command, Stdio},
@@ -108,6 +109,42 @@ fn static_case(ordered: bool) -> Result<(), String> {
         store.clear()?;
         drop(store);
         println!("Static controller baseline: ordered={ordered}, including search domains");
+        // Preferences read-back does not establish that configd has published
+        // matching effective resolvers. Wait only in this disposable setup;
+        // production admission still rejects inconsistent snapshots immediately.
+        let started = Instant::now();
+        let mut ready_since = None;
+        loop {
+            live::expect_state(&baseline, &baseline.applied)?;
+            let report = macos_preflight::preflight()?;
+            let admission = macos_admission::candidate(&report);
+            eprintln!(
+                "Static readiness: configured={:?}, effective={:?}, admission={:?}",
+                report
+                    .services
+                    .iter()
+                    .map(|s| (&s.name, &s.configured_dns))
+                    .collect::<Vec<_>>(),
+                report.default_dns_servers,
+                admission.as_ref().map(|_| ()),
+            );
+            // A preflight has its own bounded utility budget; native framework
+            // calls are not hard timed. Never accept a result after this budget.
+            if started.elapsed() >= Duration::from_secs(10) {
+                return Err(format!(
+                    "Static DNS readiness exceeded ten seconds: {admission:?}"
+                ));
+            }
+            if admission.is_ok() {
+                let ready = ready_since.get_or_insert_with(Instant::now);
+                if ready.elapsed() >= Duration::from_millis(500) {
+                    break;
+                }
+            } else {
+                ready_since = None;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
         loopback::controller_case("deadline")?;
         live::expect_state(&baseline, &baseline.applied)
     })();
