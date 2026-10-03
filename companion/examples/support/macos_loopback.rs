@@ -226,18 +226,36 @@ async fn forwarded_a(destination: SocketAddr, tcp: bool) -> Result<(), String> {
 }
 
 fn case(force_resolver_failure: bool) -> Result<(), String> {
-    let (mut record, upstreams) = live::capture_with_upstreams()?;
-    if upstreams.len() > 4 {
-        return Err("Loopback resolver supports at most four explicit upstreams".into());
+    let (mut record, captured_upstreams) = live::capture_with_upstreams()?;
+    // The hosted VM's DNS gateway may not support TCP. Test explicitly chosen
+    // upstreams without changing production forwarding or the recovery snapshot.
+    let upstreams: Vec<SocketAddr> = std::env::var("NAAB_LOOPBACK_UPSTREAMS")
+        .map_err(|_| "Missing explicit CI loopback upstreams")?
+        .split(',')
+        .map(|s| s.parse().map_err(|_| "Invalid explicit CI upstream"))
+        .collect::<Result<_, _>>()?;
+    let config: DnsConfig = serde_json::from_value(serde_json::json!({"upstreams": upstreams}))
+        .map_err(|e| e.to_string())?;
+    config.validate()?;
+    if upstreams.iter().any(|s| s.ip().is_loopback()) {
+        return Err("Loopback upstreams are forbidden".into());
     }
     record.applied.configuration = Configuration::Saved(br#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>ServerAddresses</key><array><string>127.0.0.1</string><string>::1</string></array></dict></plist>"#.to_vec());
     record.validate()?;
-    // Establish whether the captured runner DNS can answer before diagnosing
-    // the separate resolver. This probe never uses or changes system DNS.
+    // Observe the runner gateway separately from the required test upstreams.
+    // Neither probe uses or changes system DNS; chosen upstreams must pass both.
     let baseline_runtime = runtime()?;
+    for upstream in &captured_upstreams {
+        for tcp in [false, true] {
+            let result = baseline_runtime.block_on(forwarded_a(*upstream, tcp));
+            println!("Captured upstream diagnostic: {upstream}, tcp={tcp}, result={result:?}");
+        }
+    }
     for upstream in &upstreams {
-        println!("Baseline explicit upstream A probe: {upstream}");
-        baseline_runtime.block_on(forwarded_a(*upstream, false))?;
+        for tcp in [false, true] {
+            println!("Required explicit CI upstream A probe: {upstream}, tcp={tcp}");
+            baseline_runtime.block_on(forwarded_a(*upstream, tcp))?;
+        }
     }
     drop(baseline_runtime);
     let token = format!("{:032x}", rand::random::<u128>());
@@ -326,7 +344,7 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
             {
                 return Err("System query was not observed forwarding through NAAB".into());
             }
-            println!("PASS: fresh macOS system query was forwarded to the captured upstreams");
+            println!("PASS: fresh macOS system query was forwarded to the explicit CI upstreams");
             while started.elapsed() < Duration::from_secs(15) {
                 guard(&mut resolver)?;
                 live::expect_state(&record, &record.applied)?;

@@ -122,6 +122,7 @@ jobs:
           sudo /usr/bin/env GITHUB_ACTIONS="$GITHUB_ACTIONS" RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" \
             NAAB_LIVE_DNS_TEST=disposable-mac-dns-recovery \
             NAAB_LIVE_LOOPBACK_TEST=disposable-mac-loopback \
+            NAAB_LOOPBACK_UPSTREAMS=1.1.1.1:53,1.0.0.1:53 \
             companion/target/debug/examples/macos_recovery_ci --loopback
 
       - name: Verify live DNS test cleanup
