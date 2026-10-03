@@ -10,7 +10,7 @@ use naab_companion::dns::{
     config::DnsConfig,
     diagnostics::Diagnostics,
     server,
-    system::{health::local_probe, macos_recovery::Configuration},
+    system::{health::local_probe, macos_preflight, macos_recovery::Configuration},
 };
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -108,9 +108,21 @@ pub(super) fn resolver_child(args: &[String]) -> Result<(), String> {
             async move {
                 let start = Instant::now();
                 let mut reported = false;
+                let mut observed_query = false;
                 while start.elapsed() < Duration::from_secs(120) {
+                    let snapshot = observed.snapshot();
+                    if !observed_query {
+                        if let Some(entry) = snapshot.recent.iter().find(|e| e.hostname == expected)
+                        {
+                            eprintln!(
+                                "SYSTEM_QUERY_OBSERVED: type={}, outcome={}",
+                                entry.query_type, entry.outcome
+                            );
+                            observed_query = true;
+                        }
+                    }
                     if !reported
-                        && observed.snapshot().recent.iter().any(|entry| {
+                        && snapshot.recent.iter().any(|entry| {
                             entry.hostname == expected
                                 && entry.query_type == "A"
                                 && entry.outcome == "forwarded"
@@ -308,6 +320,55 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
             }
             check_live(resolver, &rt, &token)
         };
+        // Committing preferences and notifying configd need not synchronously
+        // update the effective resolver configuration. Wait for read-only OS
+        // evidence before issuing the one-shot system query, never a fixed sleep.
+        let readiness_started = Instant::now();
+        let mut stable_since = None;
+        let mut previous = None;
+        loop {
+            guard(&mut resolver)?;
+            live::expect_state(&record, &record.applied)?;
+            let observed = macos_preflight::preflight()?;
+            let diagnostic = serde_json::to_string(&serde_json::json!({
+                "primaryService": observed.primary_ipv4_service_id,
+                "defaultDnsServers": observed.default_dns_servers,
+                "resolvers": observed.resolvers
+            }))
+            .map_err(|e| e.to_string())?;
+            if previous.as_ref() != Some(&diagnostic) {
+                println!("Effective DNS after activation: {diagnostic}");
+                previous = Some(diagnostic);
+            }
+            let ready = observed.primary_ipv4_service_id.as_deref()
+                == Some(record.service_id.as_str())
+                && observed.current_set_id.as_deref() == Some(record.set_id.as_str())
+                && !observed.default_dns_servers.is_empty()
+                && observed
+                    .default_dns_servers
+                    .iter()
+                    .all(|s| s == "127.0.0.1" || s == "::1")
+                && observed
+                    .resolvers
+                    .iter()
+                    .all(|r| r.nameservers.iter().all(|s| s == "127.0.0.1" || s == "::1"));
+            if ready {
+                if stable_since.get_or_insert_with(Instant::now).elapsed()
+                    >= Duration::from_millis(500)
+                {
+                    println!("PASS: effective macOS resolver configuration settled on NAAB loopback addresses");
+                    break;
+                }
+            } else {
+                stable_since = None;
+            }
+            if readiness_started.elapsed() >= Duration::from_secs(8) {
+                return Err(
+                    "Effective macOS DNS did not settle on the applied loopback setting".into(),
+                );
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
         // .invalid token probes are direct wire checks only: system APIs may
         // synthesize a negative answer without querying DNS (RFC 6761 6.4).
         // Both live cases require a fresh ordinary-name query AND evidence that
