@@ -2,7 +2,7 @@
 //! Unlike dns-sd's CLI output, the callback distinguishes a negative answer
 //! (-65554) from timeout (-65568). Neither changes network settings.
 use std::{
-    ffi::{c_char, c_void, CStr, CString},
+    ffi::{c_char, c_void, CString},
     time::{Duration, Instant},
 };
 
@@ -56,14 +56,8 @@ impl Drop for Owned {
     }
 }
 
-pub(super) enum Expected<'a> {
-    Token(&'a str),
-    NoRecord,
-}
-
 struct Context {
     name: CString,
-    token: Option<String>,
     result: Option<Result<(), String>>,
 }
 
@@ -72,11 +66,11 @@ unsafe extern "C" fn reply(
     flags: u32,
     _: u32,
     error: i32,
-    name: *const c_char,
-    kind: u16,
-    class: u16,
-    length: u16,
-    data: *const c_void,
+    _: *const c_char,
+    _: u16,
+    _: u16,
+    _: u16,
+    _: *const c_void,
     _: u32,
     context: *mut c_void,
 ) {
@@ -89,7 +83,7 @@ unsafe extern "C" fn reply(
     if error != 0 {
         // All other callback arguments are undefined for errors; do not read
         // them. Only this exact code is valid negative-answer evidence.
-        state.result = Some(if error == -65554 && state.token.is_none() {
+        state.result = Some(if error == -65554 {
             Ok(())
         } else {
             Err(format!("System DNS callback error {error}"))
@@ -99,49 +93,19 @@ unsafe extern "C" fn reply(
     if flags & 2 == 0 {
         return;
     } // Ignore remove events.
-    let valid = match &state.token {
-        Some(token) => {
-            !name.is_null()
-                && !data.is_null()
-                && kind == 16
-                && class == 1
-                && unsafe {
-                    CStr::from_ptr(name)
-                        .to_bytes()
-                        .eq_ignore_ascii_case(state.name.as_bytes())
-                }
-                && usize::from(length) == token.len() + 1
-                && {
-                    let bytes = unsafe {
-                        std::slice::from_raw_parts(data.cast::<u8>(), usize::from(length))
-                    };
-                    bytes.first().copied() == Some(token.len() as u8)
-                        && &bytes[1..] == token.as_bytes()
-                }
-        }
-        None => false,
-    };
-    state.result = Some(if valid {
-        Ok(())
-    } else {
-        Err("Unexpected system DNS name, type, or answer data".into())
-    });
+    state.result = Some(Err(
+        "Expected a negative system DNS answer, got a positive answer".into(),
+    ));
 }
 
-pub(super) fn query(
+pub(super) fn query_negative(
     name: &str,
-    expected: Expected<'_>,
     mut guard: impl FnMut() -> Result<(), String>,
 ) -> Result<(), String> {
     let mut context = Context {
         name: CString::new(name).map_err(|e| e.to_string())?,
-        token: match expected {
-            Expected::Token(value) => Some(value.to_owned()),
-            Expected::NoRecord => None,
-        },
         result: None,
     };
-    let kind = if context.token.is_some() { 16 } else { 1 };
     let mut service = std::ptr::null_mut();
     // ReturnIntermediates delivers negative answers; Timeout remains an error.
     // Interface 0 lets macOS select the resolver, as ordinary apps do.
@@ -151,7 +115,7 @@ pub(super) fn query(
             0x1000 | 0x10000,
             0,
             context.name.as_ptr(),
-            kind,
+            1, // A
             1,
             reply,
             (&mut context as *mut Context).cast(),
@@ -207,7 +171,6 @@ mod tests {
         for (error, pass) in [(-65554, true), (-65568, false), (-65563, false)] {
             let mut context = Context {
                 name: CString::new("unique.example.com.").unwrap(),
-                token: None,
                 result: None,
             };
             // Nonzero-error callback parameters are deliberately null/undefined.
@@ -231,21 +194,14 @@ mod tests {
     }
 
     #[test]
-    fn token_requires_exact_name_type_and_data() {
-        for (name, kind, token, pass) in [
-            ("fresh.naab-health.invalid.", 16, "token", true),
-            ("other.naab-health.invalid.", 16, "token", false),
-            ("fresh.naab-health.invalid.", 1, "token", false),
-            ("fresh.naab-health.invalid.", 16, "wrong", false),
-        ] {
+    fn positive_answers_are_not_negative_evidence() {
+        for kind in [1, 16] {
             let mut context = Context {
-                name: CString::new("fresh.naab-health.invalid.").unwrap(),
-                token: Some("token".into()),
+                name: CString::new("unique.example.com.").unwrap(),
                 result: None,
             };
-            let name = CString::new(name).unwrap();
-            let mut data = vec![token.len() as u8];
-            data.extend_from_slice(token.as_bytes());
+            let name = context.name.clone();
+            let data = [192, 0, 2, 1];
             unsafe {
                 reply(
                     std::ptr::null_mut(),
@@ -261,7 +217,7 @@ mod tests {
                     (&mut context as *mut Context).cast(),
                 )
             };
-            assert_eq!(context.result.unwrap().is_ok(), pass);
+            assert!(context.result.unwrap().is_err());
         }
     }
 }

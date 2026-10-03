@@ -1,6 +1,6 @@
 //! CI-only bounded loopback trial; never packaged as a user command.
 use super::live::{self, Holder};
-use super::system_query::{query as system_query, Expected};
+use super::system_query::query_negative as system_query;
 use hickory_proto::{
     op::{Message, MessageType, Query, ResponseCode},
     rr::{Name, RData, RecordType},
@@ -308,12 +308,17 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
             }
             check_live(resolver, &rt, &token)
         };
-        let health_name = format!("{:032x}.naab-health.invalid.", rand::random::<u128>());
-        system_query(&health_name, Expected::Token(&token), || {
-            guard(&mut resolver)
-        })?;
+        // .invalid token probes are direct wire checks only: system APIs may
+        // synthesize a negative answer without querying DNS (RFC 6761 6.4).
+        // Both live cases require a fresh ordinary-name query AND evidence that
+        // this resolver actually forwarded it, not merely an OS negative reply.
+        system_query(&forwarded_name, || guard(&mut resolver))?;
+        if messages.recv_timeout(Duration::from_secs(3)).as_deref() != Ok("FORWARDED_SYSTEM_QUERY")
+        {
+            return Err("System query was not observed forwarding through NAAB".into());
+        }
         live::expect_state(&record, &record.applied)?;
-        println!("PASS: fresh macOS system resolver query reached the active NAAB instance");
+        println!("PASS: fresh macOS system query was forwarded through NAAB to the explicit CI upstreams");
         if force_resolver_failure {
             resolver.0.kill().map_err(|e| e.to_string())?;
             let status = resolver.0.wait().map_err(|e| e.to_string())?;
@@ -336,15 +341,6 @@ fn case(force_resolver_failure: bool) -> Result<(), String> {
             }
             println!("Watchdog: three consecutive local probe failures; restoring DNS");
         } else {
-            // Unique public name deliberately returns NXDOMAIN. Seeing both the
-            // OS answer and resolver's forwarded event proves uncached passthrough.
-            system_query(&forwarded_name, Expected::NoRecord, || guard(&mut resolver))?;
-            if messages.recv_timeout(Duration::from_secs(3)).as_deref()
-                != Ok("FORWARDED_SYSTEM_QUERY")
-            {
-                return Err("System query was not observed forwarding through NAAB".into());
-            }
-            println!("PASS: fresh macOS system query was forwarded to the explicit CI upstreams");
             while started.elapsed() < Duration::from_secs(15) {
                 guard(&mut resolver)?;
                 live::expect_state(&record, &record.applied)?;
