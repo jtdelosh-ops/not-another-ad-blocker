@@ -1,6 +1,31 @@
 # Not Another Ad Blocker
 ## Product & Engineering Roadmap
 
+## Current milestone — Dependable browser preview
+
+Scope decision (2026-10-14): focus on the Chromium extension and its local rule-compilation companion. DNS development is paused, and the local proxy has been removed from the roadmap. Existing DNS source, recovery tools, test evidence, and regression tests are retained as experimental work. Resuming DNS requires a new scope decision. Shared-code changes still require the relevant existing checks.
+
+The milestone delivers a browser preview that can be installed from prebuilt downloads and used without Node.js, pnpm, Rust, or source-build commands on the user's computer. The initial package targets are Windows and Intel Mac; each download must state its tested OS/browser support. Apple Silicon, Firefox, and Safari support remain outside this milestone. Loading an unpacked extension and registering the companion remain explicit setup steps.
+
+### Delivery order
+
+1. Commit and push the reviewed browser fixes and record the baseline verification.
+2. Package the existing extension and companion with one companion-registration step, short installation/update/removal instructions, and identifiable source versions.
+3. Automate the main browser/native integration scenarios on Windows and Mac, then verify the packaged installation workflow.
+
+### Finish criteria
+
+- A fresh installation can load the packaged extension, register the prebuilt companion as the normal user, and import local rules or download selected lists.
+- Representative network and cosmetic fixtures demonstrate filtering, site exceptions, and global off/on behavior. Coverage claims stay limited to the supported rule subset.
+- Local compilation, subscription refresh, and protection controls reach confirmed completion or show an actionable failure. Lost save replies preserve the draft and require verification of the saved state.
+- Updating the package and reloading the extension preserves custom rules, selected subscriptions, site exceptions, and protection settings.
+- Saved browser rules continue working when the companion is unavailable; the interface explains why new compilation/downloads are unavailable.
+- Installation, update, removal, and the core filtering/control scenarios have recorded evidence for the exact package versions. Required checks remain in force, and outstanding failures are reported.
+
+After these criteria pass, prioritize problems found during ordinary browsing. New DNS integration, proxy work, advanced video-ad handling, and a redesigned rule engine are not prerequisites for this milestone.
+
+The phased sections below retain earlier design references and historical checkpoints. They do not override this active milestone or authorize paused/deferred work.
+
 Mac checkpoint (2026-10-03): The recovery foundation, internal foreground trial controller, bounded utility capture, and conservative internal admission have passed scoped tests on disposable hosted macOS 15 Intel. The latest [Mac CI run](https://github.com/jtdelosh-ops/not-another-ad-blocker/actions/runs/37151012090), source `ea2ffd1`, passed nine live cases: normal and scheduled recovery after forced helper exit, both system-query/loopback cases, actual SIGINT/SIGTERM repeated during cleanup, single/ordered IPv4 controller restoration, and separate mixed IPv4/IPv6 offline recovery with ordered search domains. Final cleanup confirmed no pending journal. The hosted runner omits the saved IPv6 server from effective DNS, so strict admission still refuses that mixed configuration; offline restoration does not establish admitted mixed activation. See the [Mac recovery guide](macos-dns-recovery.md) for exact versions and limits. Public Mac activation, helper/lifecycle integration, hard deadlines for native framework calls, physical network transitions, and broader platform validation remain unfinished. No settings-changing testing was performed on the everyday Mac.
 
 Earlier checkpoint (2026-10-01): [Phase 1 is complete](phase-1-exit-review.md) for the extension 0.4.1 / companion 0.2.1 developer preview. Phase 2 includes an opt-in [DNS development core](dns-core.md), a [system-DNS recovery foundation](system-dns-design.md), and a [time-limited Windows integration preview](windows-dns-preview.md) with real settings access, port-53 listeners, live health checks, a separate settings/recovery helper and offline recovery. User-observed controlled Windows activation/restoration, resolver failure, offline recovery, Ctrl+C, failed-upstream/degraded behavior, static/mixed DNS restoration, and scheduled recovery after forced helper exit and VM reboot have passed. The developer environment has not independently read back the latest guest result files. [Read-only Mac DNS discovery and preflight](macos-dns-discovery.md) ran once on an Intel Mac; the user reported three enabled services with no explicitly configured DNS, and the preflight mapped the default IPv4 route to Wi-Fi while preserving ordinary, mDNS, and scoped resolver entries. Effective resolver policy handling, permanent resolver service, network/VPN transition handling, extension DNS controls, full-list compatibility, macOS activation/recovery and cross-platform verification remain unfinished. The requirements below describe intended scope, not a list of completed features.
@@ -58,8 +83,7 @@ The project should prioritize:
 │  • Native rule engine      │
 │  • Diagnostics             │
 │  • Local storage           │
-│  • Future DNS module       │
-│  • Future proxy module     │
+│  • Paused DNS preview      │
 └────────────────────────────┘
 ```
 
@@ -586,7 +610,9 @@ If any of those remain confusing or unreliable, Phase 1 is not finished.
 
 ---
 
-# 10. Phase 2 — DNS Filtering
+# 10. Phase 2 — DNS Filtering (paused)
+
+This section is retained as a design reference. Its unfinished requirements are not the active work order; DNS remains experimental while the browser milestone is completed.
 
 ## Objective
 
@@ -1054,18 +1080,11 @@ Measure:
 
 Confirm that Phase 2 remains a DNS filtering feature and has not drifted into proxy-style traffic inspection.
 
-A full proxy should not begin merely because it is technically possible.
-
-Proxy work should start only when there is a documented, concrete use case that:
-
-1. MV3 cannot solve,
-2. cosmetic filtering cannot solve,
-3. DNS cannot solve,
-4. and provides enough user value to justify the additional security and maintenance burden.
+Local proxy development and HTTPS interception have been removed from the product roadmap.
 
 ## Cross-cutting follow-up — Navigation and video-ad coverage
 
-Browser testing identified two related gaps that should be tracked alongside Phase 2 and the extension work before a broader release. They are browser-enforcement tasks, not DNS requirements.
+Browser testing identified two related gaps for later investigation. Neither is a finish criterion for the current browser milestone. They are browser-enforcement tasks, not requirements to resume DNS work.
 
 ### Popup and redirect protection
 
@@ -1238,45 +1257,9 @@ Rule creation should remain deterministic and inspectable.
 
 ---
 
-# 14. Phase 6 — Optional Local Proxy
+# 14. Removed scope — Local Proxy
 
-## Objective
-
-Explore capabilities unavailable through MV3 and DNS while preserving an explicit trust boundary.
-
-## Default position
-
-The proxy is optional and should not be required for normal use.
-
-Initial proxy work should avoid TLS interception.
-
-Potential capabilities:
-
-- HTTP request inspection
-- Metadata-based filtering
-- Routing
-- Request diagnostics
-- Future advanced enforcement
-
-HTTPS interception must be considered a separate sub-project because it requires installation of a trusted local certificate authority.
-
-## HTTPS interception gate
-
-Do not implement TLS decryption unless there is a specific capability that:
-
-1. Cannot reasonably be achieved another way.
-2. Provides substantial user value.
-3. Can be explained clearly.
-4. Can be implemented with strong key protection.
-5. Can be completely removed on uninstall.
-
-## Phase 6 completion criteria
-
-- Proxy can fail open or safely disable without breaking networking.
-- Certificate installation is not required for base proxy use.
-- Security model has undergone focused review.
-- Uninstall fully restores networking.
-- Proxy mode is clearly differentiated from standard protection.
+The former optional-proxy phase was removed on 2026-10-14. Local HTTP proxying, traffic interception, and installation of a certificate authority are not planned product features.
 
 ---
 
@@ -1452,34 +1435,16 @@ When implementing any phase:
 
 # 21. Immediate Build Order
 
-Work should begin in this sequence:
+The active work follows the browser milestone above:
 
 ```text
-1. Initialize monorepo
-2. Create MV3 extension shell
-3. Create Rust companion shell
-4. Implement Native Messaging handshake
-5. Define versioned protocol
-6. Load local test filter list
-7. Build parser subset
-8. Build normalized rule model
-9. Compile basic MV3 rules
-10. Add EasyList
-11. Add EasyPrivacy
-12. Implement cosmetic filtering
-13. Add site toggle
-14. Add activity viewer
-15. Add basic element picker
-16. Add persistent custom rules
-17. Add tests
-18. Document installation
-19. Run Phase 1 exit review
-20. Decide whether Phase 2 gates are satisfied
+1. Save the reviewed browser fixes and baseline verification
+2. Deliver prebuilt Windows and Intel Mac packages with concise setup/update instructions
+3. Verify installation, filtering, controls, updates, and companion-unavailable behavior
+4. Complete the browser milestone review and prioritize observed browsing problems
 ```
 
-Do not begin DNS work simply because the Phase 1 core architecture exists.
-
-Phase 2 starts only after the Phase 1 definition of done and exit review are satisfied.
+DNS development remains paused. The proxy is removed from scope. Earlier phase descriptions are design references, not prerequisites for delivering this milestone.
 
 ---
 

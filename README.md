@@ -6,6 +6,8 @@ The goal is filtering you can understand and control: choose your lists, add you
 
 **Status: early developer preview.** Phase 1 is complete for the preview, but filter compatibility is incomplete. A fresh installation needs a filter-list download or a local rule import before it blocks anything.
 
+**Current milestone: a dependable browser preview.** Package the extension and companion for Windows and Intel Mac, simplify setup, and verify filtering, controls, updates, and companion-unavailable behavior. DNS development is paused; the existing DNS previews remain experimental. The proxy has been removed from the product roadmap. See the [milestone and finish criteria](docs/roadmap.md#current-milestone--dependable-browser-preview).
+
 [Get started](docs/getting-started.md) · [Roadmap](docs/roadmap.md) · [Architecture](docs/architecture.md) · [Privacy model](docs/privacy-model.md)
 
 ## What it does
@@ -55,7 +57,7 @@ Current limits include:
 - The basic picker uses supported class/ID selectors in the top document; changing class names can make a saved rule stop matching.
 - Browser support is Chromium only. Firefox and Safari are not implemented. A source-only [Windows DNS trial](docs/windows-dns-preview.md) is available for controlled testing; everyday system-wide protection is not ready.
 
-The [Phase 1 exit review](docs/phase-1-exit-review.md) records the completed performance follow-up. Phase 2 has begun with a [local DNS core](docs/dns-core.md): explicit domain filtering, forwarding, caching and local diagnostics on a development port. System integration and usable full-list DNS compatibility remain unfinished; proxy capabilities belong to later roadmap phases.
+The [Phase 1 exit review](docs/phase-1-exit-review.md) records the completed performance follow-up. Previous DNS work produced a [local DNS core](docs/dns-core.md) and controlled platform previews. That work is paused and is not required to complete the browser milestone. Existing recovery tools and regression tests remain available; everyday system-wide DNS protection is unfinished. No proxy is planned.
 
 ## Try it or work on it
 
