@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NAAB_PLAYWRIGHT || 'playwright');
 const root = fileURLToPath(new URL('..', import.meta.url));
-const extension = path.join(root, 'extension', 'dist');
+const extension = process.env.NAAB_EXTENSION_DIR || path.join(root, 'extension', 'dist');
 const profile = await mkdtemp(path.join(tmpdir(), 'naab-popup-profile-'));
 const pageErrors = [];
 let context;

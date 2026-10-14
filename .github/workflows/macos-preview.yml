@@ -1,8 +1,12 @@
-name: Mac preview
+name: Browser preview
 
 on:
   workflow_dispatch:
     inputs:
+      dns_checks:
+        description: Run the retained DNS/full-companion Mac checks instead of the browser package build (DNS development is paused)
+        type: boolean
+        default: false
       live_recovery:
         description: Test actual DNS restoration on the disposable hosted Mac
         type: boolean
@@ -16,13 +20,18 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main, feature/activity-viewer]
+    branches: [main, feature/activity-viewer, feature/system-dns-foundation]
     paths:
       - '.github/workflows/macos-preview.yml'
       - 'companion/**'
       - 'extension/**'
       - 'scripts/install-macos.command'
       - 'scripts/package-macos.sh'
+      - 'scripts/install-windows*'
+      - 'scripts/uninstall-windows.cmd'
+      - 'scripts/package-windows.mjs'
+      - 'scripts/check-browser-package.mjs'
+      - 'docs/browser-preview.md'
       - 'docs/macos-testing.md'
       - 'tests/**'
 
@@ -34,8 +43,138 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  browser:
+    name: Browser package (${{ matrix.os }})
+    if: ${{ !inputs.dns_checks && !inputs.live_recovery && !inputs.live_loopback && !inputs.live_controller }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15-intel]
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Test registration plans
+        run: node --test tests/installer.test.mjs
+
+      - name: Test Windows installer in isolated registry namespace
+        if: runner.os == 'Windows'
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/windows-installer.test.ps1
+
+      - name: Test Mac installer in isolated home directory
+        if: runner.os == 'macOS'
+        run: /bin/bash tests/macos-installer.test.sh
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.19.0
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Check and build extension
+        working-directory: extension
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, 2026-09-21
+        with:
+          toolchain: '1.98.1'
+          components: rustfmt
+
+      # This package gate covers browser modules. General CI still runs the
+      # full suite; the retained DNS job below is an explicit separate run.
+      - name: Test browser companion modules
+        run: |
+          cargo fmt --manifest-path companion/Cargo.toml --all --check
+          cargo test --locked --manifest-path companion/Cargo.toml --lib -- --skip dns::
+
+      - name: Build only the browser companion
+        run: cargo build --release --locked --manifest-path companion/Cargo.toml --bin naab-companion
+
+      - name: Package Windows download
+        if: runner.os == 'Windows'
+        run: |
+          node scripts/package-windows.mjs
+          $archive = Get-ChildItem companion/target/windows-preview/*.zip
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath companion/target/package-check -Force
+          "NAAB_PACKAGE_DIR=$((Resolve-Path companion/target/package-check/NAAB-Windows-Preview).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Package Intel Mac download
+        if: runner.os == 'macOS'
+        run: |
+          /bin/bash scripts/package-macos.sh
+          mkdir -p companion/target/package-check
+          tar -xzf companion/target/macos-preview/*.tar.gz -C companion/target/package-check
+          echo "NAAB_PACKAGE_DIR=$PWD/companion/target/package-check/NAAB-Mac-Preview" >> "$GITHUB_ENV"
+
+      - name: Verify extracted package and native wire
+        shell: bash
+        run: |
+          node scripts/check-browser-package.mjs "$NAAB_PACKAGE_DIR"
+          echo "NAAB_EXTENSION_DIR=$NAAB_PACKAGE_DIR/extension" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix='.exe'; else suffix=''; fi
+          echo "NAAB_BINARY=$NAAB_PACKAGE_DIR/companion/naab-companion$suffix" >> "$GITHUB_ENV"
+          NAAB_BINARY="$NAAB_PACKAGE_DIR/companion/naab-companion$suffix" node --test tests/native-integration.test.mjs
+
+      - name: Install isolated browser test tools
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/naab-browser-tools" --no-save --package-lock=false playwright@1.62.1
+          node "$RUNNER_TEMP/naab-browser-tools/node_modules/playwright/cli.js" install chromium
+          echo "NAAB_PLAYWRIGHT=$RUNNER_TEMP/naab-browser-tools/node_modules/playwright" >> "$GITHUB_ENV"
+
+      - name: Test packaged extension in isolated browser profiles
+        timeout-minutes: 5
+        run: |
+          node tests/browser-smoke.mjs
+          node tests/popup-browser.mjs
+          node tests/options-browser.mjs
+          node tests/package-update-browser.mjs
+
+      - name: Upload Windows archive and checksum
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: NAAB-Windows-Preview-x64
+          path: |
+            companion/target/windows-preview/*.zip
+            companion/target/windows-preview/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+      - name: Upload Intel Mac archive and checksum
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: NAAB-Mac-Preview-Intel
+          path: |
+            companion/target/macos-preview/*.tar.gz
+            companion/target/macos-preview/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
   package:
-    name: Build Intel Mac preview
+    name: Retained Mac DNS and full-companion checks
+    if: ${{ inputs.dns_checks || inputs.live_recovery || inputs.live_loopback || inputs.live_controller }}
     runs-on: macos-15-intel
     timeout-minutes: 25
     env:

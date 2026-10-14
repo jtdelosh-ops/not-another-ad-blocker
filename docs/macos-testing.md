@@ -1,5 +1,7 @@
 # NAAB Mac preview — Chrome on Intel
 
+For new **Browser preview** downloads, use the shared [Windows and Intel Mac installation/update guide](browser-preview.md). It covers the current package layout, Chrome and Edge registration, and the requested 90-day artifact retention. The older Mac-only workflow retained artifacts for seven days; expired artifacts need a new build. The notes below describe that earlier Chrome preview and its device checks.
+
 This package contains extension 0.4.1 and the Intel Mac companion 0.2.1. You do not need Node, Rust, Homebrew, or Xcode to install it. The companion downloads and compiles lists; Chrome performs the filtering.
 
 Use an Intel Mac and a current version of Chrome. Google's current Chrome releases require macOS 13 Ventura or newer; Ventura 13.3.1 meets that requirement. The registration helper requires macOS 12 or newer. This is a developer preview, signed locally for execution but not signed with an Apple Developer ID or notarized. The first installation on your own Mac still needs verification.

@@ -11,7 +11,7 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != x86_64 ]]; then
   exit 1
 fi
 
-for required_file in extension/dist/manifest.json extension/lib/native-client.mjs companion/target/release/naab-companion scripts/install-macos.command docs/macos-testing.md; do
+for required_file in extension/dist/manifest.json extension/lib/native-client.mjs companion/target/release/naab-companion scripts/install-macos.command docs/browser-preview.md; do
   if [[ ! -f "$required_file" ]]; then
     printf 'Missing build input: %s\n' "$required_file" >&2
     exit 1
@@ -25,6 +25,7 @@ if [[ -n "${GITHUB_SHA:-}" && "$GITHUB_SHA" != "$source_commit" ]]; then
 fi
 git diff --quiet
 git diff --cached --quiet
+git ls-files --error-unmatch scripts/package-macos.sh scripts/install-macos.command docs/browser-preview.md >/dev/null
 
 output_directory="${1:-companion/target/macos-preview}"
 mkdir -p "$output_directory"
@@ -36,7 +37,7 @@ mkdir -p "$package_directory/extension" "$package_directory/companion"
 cp -R extension/dist/. "$package_directory/extension/"
 cp companion/target/release/naab-companion "$package_directory/companion/naab-companion"
 cp scripts/install-macos.command "$package_directory/Install.command"
-cp docs/macos-testing.md "$package_directory/README.md"
+cp docs/browser-preview.md "$package_directory/README.md"
 chmod 755 "$package_directory/Install.command" "$package_directory/companion/naab-companion"
 
 # This is a local preview signature, not Developer ID signing or notarization.
@@ -106,7 +107,8 @@ function walk(directory) {
 walk(root);
 const info = {
   formatVersion: 1,
-  product: 'Not Another Ad Blocker Mac preview',
+  product: 'Not Another Ad Blocker Mac browser preview',
+  sourceDirty: false,
   extensionVersion: extension.version,
   companionVersion: companion.version,
   companionProtocolVersion: status.protocolVersion,

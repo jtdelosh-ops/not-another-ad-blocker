@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NAAB_PLAYWRIGHT || 'playwright');
 const root = fileURLToPath(new URL('..', import.meta.url));
-const extension = path.join(root, 'extension', 'dist');
+const extension = process.env.NAAB_EXTENSION_DIR || path.join(root, 'extension', 'dist');
 const profile = await mkdtemp(path.join(tmpdir(), 'naab-options-profile-'));
 const errors = [];
 let context;
@@ -24,7 +24,7 @@ try {
   const id = new URL(worker.url()).host;
   await worker.evaluate(() => {
     chrome.runtime.sendNativeMessage = async (_host, message) => {
-      if (message.method === 'status.get') return { version: 1, id: message.id, ok: true, payload: { healthy: true, companionVersion: '0.2.0', protocolVersion: 1, mode: 'local-import', capabilities: [] } };
+      if (message.type === 'status.get') return { version: 1, id: message.id, ok: true, payload: { healthy: true, companionVersion: '0.2.0', protocolVersion: 1, mode: 'local-import', capabilities: ['rules.compile'] } };
       if (globalThis.rejectCompile) throw new Error('Controlled compiler failure');
       return { version: 1, id: message.id, ok: true, payload: {
         networkRules: [], cosmeticRules: [{ domains: ['example.test'], selector: '.advertisement', raw: 'example.test##.advertisement', source: 'Browser fixture' }],
@@ -38,6 +38,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`chrome-extension://${id}/options.html`);
   await page.waitForFunction(() => !document.querySelector('#import').disabled);
+  await page.waitForFunction(() => document.querySelector('#companion').textContent.includes('is ready'));
   const draft = 'example.test##.advertisement';
   await page.locator('#filters').fill(draft);
   await page.locator('#import').click();

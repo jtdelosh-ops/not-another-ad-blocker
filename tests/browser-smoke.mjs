@@ -3,7 +3,7 @@
 // No native-host registration or existing browser profile is changed.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -13,6 +13,7 @@ import { nativeTransport } from './native-transport.mjs';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.NAAB_PLAYWRIGHT || 'playwright');
 const root = fileURLToPath(new URL('..', import.meta.url));
+const extension = process.env.NAAB_EXTENSION_DIR || path.join(root, 'extension/dist');
 const binary = process.env.NAAB_BINARY || path.join(root, 'companion', 'target', 'debug', `naab-companion${process.platform === 'win32' ? '.exe' : ''}`);
 const client = new NativeClient(nativeTransport(binary));
 const initialText = await readFile(new URL('./fixtures/local-filters.txt', import.meta.url), 'utf8');
@@ -34,7 +35,6 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 origin = `http://127.0.0.1:${server.address().port}`;
 let context;
 try {
-  const extension = path.join(root, 'extension', 'dist');
   context = await chromium.launchPersistentContext(profile, {
     headless: true, channel: 'chromium',
     ...(process.env.NAAB_CHROMIUM ? { executablePath: process.env.NAAB_CHROMIUM } : {}),
@@ -139,4 +139,6 @@ try {
 } finally {
   await context?.close();
   await new Promise(resolve => server.close(resolve));
+  if (path.dirname(profile) !== resultDir || !path.basename(profile).startsWith('chromium-profile-')) throw new Error('Unexpected browser profile path');
+  await rm(profile, { recursive: true, force: true });
 }

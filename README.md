@@ -61,7 +61,9 @@ The [Phase 1 exit review](docs/phase-1-exit-review.md) records the completed per
 
 ## Try it or work on it
 
-Use the **[build and setup guide](docs/getting-started.md)** to build this branch, load the unpacked extension, register the companion, and download your first lists. The guide also covers updates, custom-rule syntax, a local test page, and removal.
+For prebuilt Windows and Intel Mac downloads, follow the **[browser preview setup guide](docs/browser-preview.md)**. It covers installation, updates that preserve settings, and removal without development tools. Packages come from successful **Browser preview** workflow runs and identify their source commit in `BUILD-INFO.json`.
+
+For source development, use the **[build and setup guide](docs/getting-started.md)**. It also covers custom-rule syntax and a local test page.
 
 Source installation uses **Node.js 22+, pnpm, and Rust**. Registration tooling targets **Chrome and Edge on Windows and macOS**. For an Intel Mac package without development tools, follow the [Mac preview guide](docs/macos-testing.md).
 
