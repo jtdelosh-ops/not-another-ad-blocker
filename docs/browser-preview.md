@@ -2,7 +2,7 @@
 
 The package includes the browser extension and a prebuilt companion. You do not need Node.js, pnpm, Rust, or a source checkout. It installs no DNS helper or service and changes no DNS or proxy settings.
 
-Use the **Windows x64** package on 64-bit Windows with Chrome or Edge, or the **Intel Mac** package on an Intel Mac with Chrome or Edge. Apple Silicon and Safari are outside this preview. The browser must support the extension's Manifest V3 APIs; use a browser version supported on your OS. `BUILD-INFO.json` identifies the exact source commit, component versions, builder, platform checks, and package file hashes.
+Use the **Windows x64** package on 64-bit Windows with Chrome or Edge, or the **Intel Mac** package on an Intel Mac running **macOS 12 or later** with Chrome or Edge. Apple Silicon and Safari are outside this preview. The browser must support the extension's Manifest V3 APIs; use a browser version supported on your OS. `BUILD-INFO.json` identifies the exact source commit, component versions, builder, platform checks, and package file hashes.
 
 ## Download
 
