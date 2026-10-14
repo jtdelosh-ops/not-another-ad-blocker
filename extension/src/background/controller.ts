@@ -137,7 +137,10 @@ export class Controller {
       this.config = next;
       this.hasCommittedConfig = true;
       await this.backend.remove('pending').catch(() => {});
-      await this.backend.notify().catch(() => {});
+      // Tab refresh is best effort, outside the saved-rule transaction. A tab
+      // can stall or request cosmetics through this same serial queue; neither
+      // must hold the save reply or prevent subsequent settings requests.
+      void Promise.resolve().then(() => this.backend.notify()).catch(() => {});
       return structuredClone(this.config);
     } finally {
       // Ordinary failures leave/restore the previous rules; failed rollback

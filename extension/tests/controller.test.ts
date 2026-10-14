@@ -45,6 +45,34 @@ test('import atomically replaces rules and persists successful compilation', asy
   assert.equal(backend.stored.pending, undefined);
   assert.equal(backend.notifications, 1);
 });
+
+test('a stalled tab refresh does not hold the committed import or later settings requests', { timeout: 2000 }, async () => {
+  const { controller, backend } = setup();
+  backend.notify = () => { backend.notifications++; return new Promise(() => {}); };
+  const saved = await controller.import('new', 'Test');
+  assert.equal(saved.text, 'new');
+  assert.deepEqual(backend.active, desiredRules(saved));
+  assert.equal(backend.stored.pending, undefined);
+  assert.equal(backend.notifications, 1);
+  assert.equal((await controller.view()).text, 'new');
+  assert.deepEqual(await controller.cosmetics('example.test'), { selectors: ['.advertisement'] });
+  assert.equal((await controller.setEnabled(false)).enabled, false);
+  assert.deepEqual(backend.active, []);
+});
+
+test('refresh can read cosmetics through the serial queue and its failure does not fail a saved import', { timeout: 2000 }, async () => {
+  const { controller, backend } = setup();
+  let refreshed!: Promise<{ selectors: string[] }>;
+  backend.notify = async () => {
+    refreshed = controller.cosmetics('example.test');
+    await refreshed;
+    throw new Error('Tab closed');
+  };
+  const saved = await controller.import('new', 'Test');
+  assert.equal(saved.text, 'new');
+  assert.deepEqual(await refreshed, { selectors: ['.advertisement'] });
+  assert.equal((await controller.view()).text, 'new');
+});
 test('browser rejection leaves saved and active rules intact', async () => {
   const { controller, backend } = setup();
   await controller.import('old', 'Test');

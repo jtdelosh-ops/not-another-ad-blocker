@@ -1,6 +1,7 @@
 import { MAX_TEXT_BYTES, MAX_DIAGNOSTICS, RecoveryRequiredError, errorMessage, ruleCounts, type CompanionStatus, type ConfigView, type SubscriptionId, type SubscriptionProgress } from '../shared/types';
 import { element, pollSubscriptionProgress, renderRecoveryRequired, request } from '../shared/ui';
 import { diagnosticSamples } from '../shared/diagnostics';
+export function mountOptionsPage(): void {
 let config: ConfigView;
 let recoveryRequired = false;
 let isBusy = false;
@@ -10,6 +11,7 @@ const source = element<HTMLInputElement>('source-name');
 const globalToggle = element<HTMLInputElement>('global');
 const format = (value: number) => value.toLocaleString();
 function refreshControls(): void {
+  element<HTMLButtonElement>('import').disabled = isBusy || recoveryRequired || !config;
   element<HTMLButtonElement>('refresh-lists').disabled = isBusy || recoveryRequired || !config || !subscriptionsAvailable;
   element<HTMLButtonElement>('remove-lists').disabled = isBusy || recoveryRequired || !config?.subscriptions;
 }
@@ -71,6 +73,9 @@ function busy(value: boolean): void { isBusy = value; document.querySelectorAll<
 function renderRecovery(): void {
   renderRecoveryRequired(element('summary'), Array.from(document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement>('button:not(#check), input, textarea')));
   element('message').textContent = '';
+  // Keep the draft selectable for copying before extension reload.
+  editor.disabled = false;
+  editor.readOnly = true;
 }
 function renderProgress(progress: SubscriptionProgress): void {
   const stages: Record<SubscriptionProgress['phase'], string> = {
@@ -82,6 +87,7 @@ async function update(message: unknown): Promise<void> {
   if (recoveryRequired || isBusy || !config) return;
   busy(true); element('error').textContent = ''; element('message').textContent = '';
   const refreshing = (message as any)?.type === 'subscriptions.refresh';
+  if (!refreshing) element('message').textContent = (message as any)?.type === 'config.import' ? 'Compiling and saving local rules…' : 'Saving changes…';
   let stopPolling: (() => void) | undefined;
   if (refreshing) {
     renderProgress({ phase: 'checking' });
@@ -94,6 +100,7 @@ async function update(message: unknown): Promise<void> {
     if ((message as any)?.type === 'subscriptions.remove') element('list-progress').textContent = 'Subscriptions removed. Local rules and protection settings were preserved.';
   } catch (error) {
     stopPolling?.();
+    element('message').textContent = '';
     recoveryRequired ||= error instanceof RecoveryRequiredError;
     element('error').textContent = errorMessage(error);
     if (refreshing) renderProgress({ phase: 'failed', message: errorMessage(error) });
@@ -128,9 +135,12 @@ element<HTMLInputElement>('file').addEventListener('change', event => {
   if (file.size > MAX_TEXT_BYTES) { element('error').textContent = 'Local imports accept files up to 128 KiB.'; return; }
   void file.text().then(text => { editor.value = text; source.value = file.name; element('error').textContent = ''; element('message').textContent = 'File loaded into editor. Compile & replace local rules to activate it.'; }).catch(error => { element('error').textContent = errorMessage(error); });
 });
+refreshControls();
 void request<ConfigView>({ type: 'config.get' }).then(saved => {
   config = saved; editor.value = saved.text; source.value = saved.updatedAt ? saved.source : 'Local import';
   for (const id of ['easylist', 'easyprivacy'] as const) element<HTMLInputElement>(id).checked = saved.subscriptions ? saved.subscriptions.manifest.lists.some(list => list.id === id) : true;
   render();
 }, error => { recoveryRequired ||= error instanceof RecoveryRequiredError; element('error').textContent = errorMessage(error); if (recoveryRequired) renderRecovery(); else element('summary').textContent = 'Protection state could not be verified'; });
 void checkCompanion();
+}
+if (typeof document !== 'undefined') mountOptionsPage();
