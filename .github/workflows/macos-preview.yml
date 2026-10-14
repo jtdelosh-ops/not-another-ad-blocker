@@ -86,6 +86,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check and build extension
+        shell: bash
         working-directory: extension
         run: |
           pnpm typecheck
@@ -101,6 +102,7 @@ jobs:
       # This package gate covers browser modules. General CI still runs the
       # full suite; the retained DNS job below is an explicit separate run.
       - name: Test browser companion modules
+        shell: bash
         run: |
           cargo fmt --manifest-path companion/Cargo.toml --all --check
           cargo test --locked --manifest-path companion/Cargo.toml --lib -- --skip dns::
@@ -112,6 +114,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           node scripts/package-windows.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $archive = Get-ChildItem companion/target/windows-preview/*.zip
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath companion/target/package-check -Force
           "NAAB_PACKAGE_DIR=$((Resolve-Path companion/target/package-check/NAAB-Windows-Preview).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -141,6 +144,7 @@ jobs:
           echo "NAAB_PLAYWRIGHT=$RUNNER_TEMP/naab-browser-tools/node_modules/playwright" >> "$GITHUB_ENV"
 
       - name: Test packaged extension in isolated browser profiles
+        shell: bash
         timeout-minutes: 5
         run: |
           node tests/browser-smoke.mjs
