@@ -39,12 +39,40 @@ try {
   await page.goto(`chrome-extension://${id}/options.html`);
   await page.waitForFunction(() => !document.querySelector('#import').disabled);
   await page.waitForFunction(() => document.querySelector('#companion').textContent.includes('is ready'));
+  assert.equal(await page.locator('#getting-started').isVisible(), true, 'An empty install explains how to load filters');
+  assert.equal(await page.locator('#extension-id').textContent(), id, 'Setup must use this installed extension ID');
+  assert.equal(await page.locator('#extension-version').textContent(), await page.evaluate(() => chrome.runtime.getManifest().version));
+  await page.locator('#companion-setup summary').click();
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedExtensionId = text; } } }));
+  await page.locator('#copy-extension-id').click();
+  await page.waitForFunction(() => document.querySelector('#setup-message').textContent.includes('ID copied'));
+  assert.equal(await page.evaluate(() => window.copiedExtensionId), id);
+  await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('Clipboard denied'); }; });
+  await page.locator('#copy-extension-id').click();
+  await page.waitForFunction(() => document.querySelector('#setup-message').textContent.includes('Select and copy'));
+
+  // A missing companion exposes the setup instructions and can be checked again
+  // without touching an OS registration or the user's installed browser.
+  await page.evaluate(() => {
+    const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+    window.restoreMessages = () => { chrome.runtime.sendMessage = send; };
+    chrome.runtime.sendMessage = message => message.type === 'status.get' ? Promise.resolve({ ok: false, error: 'Host not installed' }) : send(message);
+    document.querySelector('#companion-setup').open = false;
+  });
+  await page.locator('#check').click();
+  await page.waitForFunction(() => document.querySelector('#companion').textContent.includes('Companion unavailable'));
+  assert.equal(await page.locator('#companion-setup').getAttribute('open'), '');
+  assert.equal(await page.locator('#extension-id').isVisible(), true);
+  await page.evaluate(() => window.restoreMessages());
+  await page.locator('#check').click();
+  await page.waitForFunction(() => document.querySelector('#companion').textContent.includes('is ready'));
   const draft = 'example.test##.advertisement';
   await page.locator('#filters').fill(draft);
   await page.locator('#import').click();
   await page.waitForFunction(() => document.querySelector('#message').textContent.startsWith('Saved.'), null, { timeout: 5000 });
   assert.equal((await page.evaluate(() => chrome.runtime.sendMessage({ type: 'config.get' }))).payload.text, draft);
   assert.equal(await page.locator('#import').isDisabled(), false, 'Stalled tab query must not hold the committed save');
+  assert.equal(await page.locator('#getting-started').isHidden(), true, 'Saved rules dismiss the first-run guidance');
 
   await worker.evaluate(() => { globalThis.rejectCompile = true; });
   await page.locator('#filters').fill('draft to keep on known failure');
@@ -74,7 +102,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('#import').disabled);
   assert.equal(await page.locator('#filters').inputValue(), 'saved despite lost reply');
   assert.deepEqual(errors, []);
-  console.log('Options browser regression passed: save with stalled tab query, known compiler failure, lost confirmation after real commit, copyable draft, and reopened saved state. Native compilation was a controlled fixture.');
+  console.log('Options browser regression passed: first-run/setup help, installed ID/version, copy/fallback, companion recheck, save with stalled tab query, known compiler failure, lost confirmation after real commit, copyable draft, and reopened saved state. Native compilation and clipboard were controlled fixtures.');
 } finally {
   await context?.close();
   // profile is the exact mkdtemp child of the system temp directory.

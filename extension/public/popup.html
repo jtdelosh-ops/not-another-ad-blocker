@@ -3,14 +3,15 @@
 <body class="popup"><main>
   <p class="eyebrow">NAAB / LOCAL PREVIEW</p>
   <h1>Not Another<br>Ad Blocker</h1>
-  <section class="card"><h2 id="site">Loading current site…</h2><p id="protection" class="status">Checking protection…</p><p id="counts" class="muted"></p>
+  <section class="card"><h2 id="site">Loading current site…</h2><p id="protection" class="status" role="status">Checking protection…</p><p id="counts" class="muted"></p>
+    <p id="first-run" class="small muted" hidden>Open Lists &amp; diagnostics and download EasyList or EasyPrivacy, or import your own filters, to start blocking.</p>
     <label class="switch"><span>Global protection</span><input type="checkbox" id="global" disabled></label>
     <label class="switch"><span id="site-label">Protection for this site</span><input type="checkbox" id="site-toggle" disabled></label>
     <p id="site-note" class="small muted"></p>
   </section>
   <section class="card page-counter"><h2>Network requests blocked on this page</h2><p id="page-count" class="counter-value" aria-live="polite">Unavailable</p><p id="page-count-note" class="small muted">Current page only. Cosmetically hidden elements are not counted.</p><button id="activity">Recent activity</button></section>
   <button id="picker" class="primary" disabled>Block something on this page</button>
-  <p id="companion" class="small muted">Checking local companion…</p>
+  <p id="companion" class="small muted" role="status">Checking local companion…</p>
   <p id="error" role="alert" class="error"></p>
   <button id="retry-config" class="primary" hidden>Retry loading protection settings</button>
   <button id="options" class="primary">Lists &amp; diagnostics</button>

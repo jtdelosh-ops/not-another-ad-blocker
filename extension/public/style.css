@@ -12,6 +12,7 @@ p { line-height: 1.5; }
 .eyebrow { font-size: 11px; letter-spacing: .14em; font-weight: 750; color: var(--accent); }
 .card { border: 1px solid var(--border); border-radius: 14px; background: #1b2520; padding: 20px; margin-bottom: 20px; }
 .muted { color: var(--muted); }
+.card a { color: var(--accent); }
 .small { font-size: 12px; }
 .status { color: var(--accent); font-weight: 600; }
 .error { color: #ffb6a8; overflow-wrap: anywhere; }
@@ -23,7 +24,7 @@ button:hover, .file:hover { background: #314b3b; }
 button.primary { color: #162010; background: var(--accent); border-color: var(--accent); font-weight: 650; }
 button:disabled { opacity: .5; cursor: wait; }
 .popup button { width: 100%; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #d5ffb7; outline-offset: 3px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid #d5ffb7; outline-offset: 3px; }
 label[for] { display: block; margin: 18px 0 8px; font-weight: 600; }
 textarea, input[type=text] { border: 1px solid #617767; border-radius: 7px; background: #101a14; color: #edf5ee; padding: 12px; width: 100%; }
 textarea { font: 13px/1.6 ui-monospace, monospace; resize: vertical; min-height: 180px; }

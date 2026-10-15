@@ -46,7 +46,7 @@ See the [privacy model](docs/privacy-model.md) for storage locations and the bou
 
 ## Where the project stands
 
-This branch contains extension **0.4.1** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [Intel Mac preview guide](docs/macos-testing.md) covers the packaged 0.4.1 Chrome build. The user reports successful 0.4.0 picker testing on an Intel Mac running Ventura 13.3.1; broader platform coverage remains limited.
+This branch contains extension **0.4.2** and companion **0.2.1**, including subscriptions, local filters, the basic element picker, cosmetic hiding, site controls, page network-block counts, and the recent-activity viewer. The [browser preview guide](docs/browser-preview.md) covers the Windows and Intel Mac packages. The user reports successful 0.4.0 picker testing on an Intel Mac running Ventura 13.3.1; broader platform coverage remains limited.
 
 Current limits include:
 

@@ -37,7 +37,7 @@ async function withPage(send: (message: any) => Promise<unknown>, run: (element:
       createDocumentFragment: () => new Element('', '#fragment'),
       querySelectorAll: (selector: string) => [...elements.values()].filter(value => ['button', 'input', 'textarea'].includes(value.tagName) && (!selector.includes(':not(#check)') || value.id !== 'check')),
     },
-    chrome: { runtime: { sendMessage: send } },
+    chrome: { runtime: { sendMessage: send, id: 'a'.repeat(32), getManifest: () => ({ version: '0.4.2' }) } },
   });
   try { mountOptionsPage(); await setImmediate(); await run(element); }
   finally { for (const [name, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name); } }

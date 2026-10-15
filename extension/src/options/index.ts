@@ -9,6 +9,9 @@ let subscriptionsAvailable = false;
 const editor = element<HTMLTextAreaElement>('filters');
 const source = element<HTMLInputElement>('source-name');
 const globalToggle = element<HTMLInputElement>('global');
+const setupHelp = element<HTMLDetailsElement>('companion-setup');
+element('extension-id').textContent = chrome.runtime.id;
+element('extension-version').textContent = chrome.runtime.getManifest().version;
 const format = (value: number) => value.toLocaleString();
 function refreshControls(): void {
   element<HTMLButtonElement>('import').disabled = isBusy || recoveryRequired || !config;
@@ -20,6 +23,7 @@ function render(): void {
   const counts = ruleCounts(config);
   const stats = config.compiled.stats;
   const total = counts.network + counts.cosmetic;
+  element('getting-started').hidden = total > 0;
   globalToggle.checked = config.enabled;
   globalToggle.disabled = isBusy;
   element('summary').textContent = !config.enabled ? `Protection paused globally · ${format(total)} rules saved` : total === 0 ? 'No rules loaded — nothing is blocked' : `${format(counts.network)} network rules and ${format(counts.cosmetic)} cosmetic rules enabled`;
@@ -71,6 +75,7 @@ function renderSubscriptions(): void {
 }
 function busy(value: boolean): void { isBusy = value; document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement>('button, input, textarea').forEach(control => { control.disabled = value; }); refreshControls(); }
 function renderRecovery(): void {
+  element('getting-started').hidden = true;
   renderRecoveryRequired(element('summary'), Array.from(document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement>('button:not(#check), input, textarea')));
   element('message').textContent = '';
   // Keep the draft selectable for copying before extension reload.
@@ -113,11 +118,22 @@ async function checkCompanion(): Promise<void> {
   try {
     const status = await request<CompanionStatus>({ type: 'status.get' });
     subscriptionsAvailable = status.healthy && status.capabilities.includes('lists.refresh') && status.capabilities.includes('lists.page');
+    if (!status.healthy) setupHelp.open = true;
     element('companion').textContent = status.healthy ? `Local companion ${status.companionVersion} is ready. ${subscriptionsAvailable ? 'EasyList/EasyPrivacy downloads are available.' : 'Update the companion to 0.2.0 or later for subscriptions; local imports still work.'}` : 'The companion reported unhealthy.';
-  } catch (error) { subscriptionsAvailable = false; element('companion').textContent = `Companion unavailable: ${errorMessage(error)} Install/register com.naab.companion using the README, then check again. Saved rules continue working.`; }
+  } catch (error) { subscriptionsAvailable = false; setupHelp.open = true; element('companion').textContent = `Companion unavailable: ${errorMessage(error)} Follow Companion setup help below, then check again. Saved rules continue working.`; }
   finally { element<HTMLButtonElement>('check').disabled = isBusy; refreshControls(); }
 }
 element('check').addEventListener('click', () => void checkCompanion());
+element('copy-extension-id').addEventListener('click', () => {
+  void (async () => {
+    try {
+      await navigator.clipboard.writeText(chrome.runtime.id);
+      element('setup-message').textContent = 'Extension ID copied. Paste it into the package installer.';
+    } catch {
+      element('setup-message').textContent = 'Could not copy automatically. Select and copy the extension ID shown above.';
+    }
+  })();
+});
 globalToggle.addEventListener('change', () => void update({ type: 'config.enabled', enabled: globalToggle.checked }));
 element('import').addEventListener('click', () => void update({ type: 'config.import', text: editor.value, source: source.value.trim() || 'Local import' }));
 element('refresh-lists').addEventListener('click', () => {

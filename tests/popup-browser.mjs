@@ -78,6 +78,7 @@ try {
 
   const popup = await openPopup(id);
   await checkToggle(popup, true);
+  assert.equal(await popup.locator('#first-run').isVisible(), true, 'Empty rules need an actionable next step');
   for (const enabled of [false, true, false, true]) {
     if (enabled) await popup.locator('#global').check();
     else await popup.locator('#global').uncheck();
@@ -113,8 +114,10 @@ try {
   await delayedTab.waitForFunction(() => typeof window.releaseChange === 'function');
   await delayedTab.evaluate(() => window.releaseChange());
   await checkToggle(delayedTab, false);
+  assert.match(await delayedTab.locator('#site-note').textContent(), /Turn on Global protection/);
   await delayedTab.locator('#global').check();
   await checkToggle(delayedTab, true);
+  assert.match(await delayedTab.locator('#site-note').textContent(), /Reload the page/);
 
   // A stalled first settings read must show retry. A late reply from that read
   // cannot overwrite the fresh settings returned by the retry.
@@ -149,6 +152,7 @@ try {
   await recovery.waitForFunction(() => document.querySelector('#protection').textContent.includes('state is unknown'));
   assert.equal(await recovery.locator('#global').isDisabled(), true);
   assert.equal(await recovery.locator('#retry-config').isHidden(), true);
+  assert.equal(await recovery.locator('#first-run').isHidden(), true);
 
   assert.deepEqual(pageErrors, []);
   console.log('Popup browser regression passed: saved off/on state, repeated toggles, stalled tab lookup, retry, late reply, mutation timeout, recovery error.');

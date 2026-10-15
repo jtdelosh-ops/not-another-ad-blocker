@@ -31,6 +31,7 @@ function render(): void {
     pickerButton.disabled = true;
     renderRecoveryRequired(element('protection'), [globalToggle, siteToggle]);
     element('counts').textContent = '';
+    element('first-run').hidden = true;
     return;
   }
   if (!config) return;
@@ -40,13 +41,14 @@ function render(): void {
   element('site').textContent = host ?? 'Browser or unsupported page';
   element('protection').textContent = !config.enabled ? 'Protection paused globally' : exception ? 'Protection paused for this site' : total === 0 ? 'No rules loaded — nothing is blocked' : 'Protection enabled';
   element('counts').textContent = `${counts.network.toLocaleString()} network · ${counts.cosmetic.toLocaleString()} cosmetic rules loaded`;
+  element('first-run').hidden = total > 0;
   globalToggle.checked = config.enabled;
   globalToggle.disabled = mutationPending;
   siteToggle.checked = !exception;
   siteToggle.disabled = mutationPending || !host || !config.enabled;
   pickerButton.disabled = mutationPending || !host || !config.enabled || !!exception || activeTabId === null;
   element('site-label').textContent = exception ? `Resume ${exception}` : 'Protection for this site';
-  element('site-note').textContent = host ? 'Site settings include subdomains. Reload the page after a change.' : 'Site controls and cosmetic filtering apply to HTTP(S) pages. Browser pages cannot be filtered.';
+  element('site-note').textContent = !host ? 'Site controls and cosmetic filtering apply to HTTP(S) pages. Browser pages cannot be filtered.' : !config.enabled ? 'Turn on Global protection to use site controls and the element picker.' : exception ? 'Turn on protection for this site to use the element picker. Site settings include subdomains; reload after a change.' : 'Site settings include subdomains. Reload the page after a change.';
 }
 async function change(message: unknown): Promise<void> {
   if (recoveryRequired || mutationPending || !config) { render(); return; }
